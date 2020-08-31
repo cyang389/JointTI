@@ -62,3 +62,7 @@ def diffusion_map(X, n_eign = None, alpha = 0.009, diffusion_time = 5):
     P_prime, P, Di, K, D_left = find_diffusion_matrix(X, alpha = alpha)
     P_prime = np.linalg.matrix_power(P_prime, n = diffusion_time)
     return find_diffusion_map(P_prime, D_left, n_eign = n_eign)    
+
+def diffusion_similarity(diff_map):
+    dists = euclidean_distances(diff_map, diff_map)
+    return dists

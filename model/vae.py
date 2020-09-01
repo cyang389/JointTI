@@ -31,7 +31,7 @@ class Decoder(nn.Module):
 
 class Fusion(nn.Module):
     def __init__(self, in_channels, latent_channels):
-        super(Encoder, self).__init__()
+        super(Fusion, self).__init__()
 
         self.lin1 = nn.Linear(in_channels, 128)
         self.lin2 = nn.Linear(128, 64)
@@ -49,7 +49,8 @@ class VAE(nn.Module):
         self.encoder_atac = Encoder(in_channels_atac, latent_channels_atac)
         self.encoder_rna = Encoder(in_channels_rna, latent_channels_rna)
         
-        self.fusion = Fusion(latent_channels_atac + latent_channels_rna, latent_channels_z)
+        self.fusion_mu = Fusion(latent_channels_atac + latent_channels_rna, latent_channels_z)
+        self.fusion_logvar = Fusion(latent_channels_atac + latent_channels_rna, latent_channels_z)
 
         self.decoder_atac = Decoder(latent_channels_z, in_channels_atac)
         self.decoder_rna = Decoder(latent_channels_z, in_channels_rna)
@@ -65,10 +66,10 @@ class VAE(nn.Module):
     def forward(self, atac, rna):
         mu1, logvar1 = self.encoder_atac(atac)
         mu2, logvar2 = self.encoder_rna(rna)
-        z1 = self.reparameterize(mu1, logvar1)
-        z2 = self.reparameterize(mu2, logvar2)
-        z = self.fusion(torch.cat((z1, z2), dim=1))
-        return z, self.decoder_atac(z), self.decoder_rna(z)
+        muz = self.fusion_mu(torch.cat((mu1, mu2), dim=1))
+        logvarz = self.fusion_logvar(torch.cat((logvar1, logvar2), dim=1))
+        z = self.reparameterize(muz, logvarz)
+        return self.decoder_atac(z), self.decoder_rna(z), z
 
         
 

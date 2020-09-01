@@ -46,4 +46,4 @@ class AutoEncoder(nn.Module):
         z = self.fusion(torch.cat((latent_atac, latent_rna), dim=1))
 
         # decode
-        return self.atac_decoder(z), self.rna_decoder(z)
+        return self.atac_decoder(z), self.rna_decoder(z), z

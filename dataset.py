@@ -72,8 +72,8 @@ class testDataset(Dataset):
 
     def __init__(self):
 
-        self.expr_ATAC = torch.FloatTensor(np.random.rand(100, 1000))
-        self.expr_RNA = torch.FloatTensor(np.random.rand(100, 1000))
+        self.expr_ATAC = torch.FloatTensor(np.tile(np.arange(100), (100, 1)) + np.tile(np.arange(100)[:,None], 100))
+        self.expr_RNA = torch.FloatTensor(np.tile(np.arange(200), (100, 1)) + np.tile(np.arange(100)[:,None], 200))
         
     def __len__(self):
         # number of cells

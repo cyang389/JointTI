@@ -80,7 +80,7 @@ def DPT_similarity(data, n_neign = None):
     '''
     import graphtools as gt
     from scipy.spatial.distance import pdist, squareform
-    # construct graph adjacency matrix with n_pca 100
+    # Calculate from raw data would be too noisy, dimension reduction is necessary, construct graph adjacency matrix with n_pca 100
     G = gt.Graph(data, n_pca=100, use_pygsp=True)
     
     # Calculate eigenvectors of the diffusion operator
@@ -101,7 +101,7 @@ def DPT_similarity(data, n_neign = None):
     eigenVectors = eigenVectors[:,idx]
     
     DPT = squareform(pdist(M))
-    
+
     # diffusion_coordinates = np.matmul(D_left, eigenVectors)
 
     # if n_neign == None:

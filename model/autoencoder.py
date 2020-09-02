@@ -35,7 +35,7 @@ class AutoEncoder(nn.Module):
         self.atac_encoder = Encoder(in_channels = in_channels_atac, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_atac)
         self.rna_encoder = Encoder(in_channels = in_channels_rna, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_rna)
         
-        self.fusion = Encoder(in_channels = latent_channels_atac + latent_channels_rna, layer1_channels = 16, layer2_channels = 8, latent_channels = latent_channels_z)
+        self.fusion = Encoder(in_channels = latent_channels_atac + latent_channels_rna, layer1_channels = latent_channels_z * 4, layer2_channels = latent_channels_z * 2, latent_channels = latent_channels_z)
 
         self.atac_decoder = Decoder(latent_channels = latent_channels_z, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels_atac)
         self.rna_decoder = Decoder(latent_channels = latent_channels_z, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels_rna)

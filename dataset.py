@@ -42,6 +42,7 @@ class scDataset(Dataset):
         # self.transform = transform
         self.expr_ATAC = torch.FloatTensor(self.expr_ATAC)
         self.expr_RNA = torch.FloatTensor(self.expr_RNA)
+
         
     def __len__(self):
         # number of cells
@@ -66,3 +67,26 @@ class scDataset(Dataset):
 #         sample_ATAC = StandardScaler().fit_transform(sample['ATAC'][None,:])
 #         sample_RNA = StandardScaler().fit_transform(sample['RNA'][None,:])
 #         return {'ATAC': torch.from_numpy(sample_ATAC.squeeze()), 'RNA':torch.from_numpy(sample_RNA.squeeze())}
+
+class testDataset(Dataset):
+
+    def __init__(self):
+
+        self.expr_ATAC = torch.FloatTensor(np.random.rand(100, 1000))
+        self.expr_RNA = torch.FloatTensor(np.random.rand(100, 1000))
+        
+    def __len__(self):
+        # number of cells
+        return len(self.expr_ATAC)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        
+        # index denote the index of the cell
+        sample = {'ATAC': self.expr_ATAC[idx,:], 'RNA':self.expr_RNA[idx,:], 'index':idx}
+        
+        # if self.transform:
+        #     sample = self.transform(sample)
+        
+        return sample

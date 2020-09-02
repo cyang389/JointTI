@@ -15,6 +15,17 @@ class Fusion(nn.Module):
         x = F.relu(self.lin2(x))
         return self.lin3(x)
 
+class Fusion_small(nn.Module):
+    def __init__(self, in_channels, layer1_channels = 8, latent_channels = 2):
+        super(Fusion_small, self).__init__()
+
+        self.lin1 = nn.Linear(in_channels, layer1_channels)
+        self.lin2 = nn.Linear(layer1_channels, latent_channels)
+
+    def forward(self, x):
+        x = F.relu(self.lin1(x))
+        return self.lin2(x)
+
 class Encoder(nn.Module):
     def __init__(self, in_channels, layer1_channels = 128, layer2_channels = 64, latent_channels = 2):
         super(Encoder, self).__init__()
@@ -48,8 +59,11 @@ class aligned_vae(nn.Module):
         self.atac_encoder = Encoder(in_channels = in_channels_atac, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_atac)
         self.rna_encoder = Encoder(in_channels = in_channels_rna, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_rna)
         
-        self.fusion_mu = Fusion(in_channels = latent_channels_atac + latent_channels_rna, layer1_channels = latent_channels_z * 4, layer2_channels = latent_channels_z * 2, latent_channels = latent_channels_z)
-        self.fusion_logvar = Fusion(in_channels = latent_channels_atac + latent_channels_rna, layer1_channels = latent_channels_z * 4, layer2_channels = latent_channels_z * 2, latent_channels = latent_channels_z)
+        # self.fusion_mu = Fusion(in_channels = latent_channels_atac + latent_channels_rna, layer1_channels = latent_channels_z * 4, layer2_channels = latent_channels_z * 2, latent_channels = latent_channels_z)
+        # self.fusion_logvar = Fusion(in_channels = latent_channels_atac + latent_channels_rna, layer1_channels = latent_channels_z * 4, layer2_channels = latent_channels_z * 2, latent_channels = latent_channels_z)
+        
+        self.fusion_mu = Fusion_small(in_channels = latent_channels_atac + latent_channels_rna, layer1_channels = latent_channels_z * 2, latent_channels = latent_channels_z)
+        self.fusion_logvar = Fusion_small(in_channels = latent_channels_atac + latent_channels_rna, layer1_channels = latent_channels_z * 2, latent_channels = latent_channels_z)
 
         self.atac_decoder = Decoder(latent_channels = latent_channels_z, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels_atac)
         self.rna_decoder = Decoder(latent_channels = latent_channels_z, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels_rna)
@@ -58,6 +72,9 @@ class aligned_vae(nn.Module):
         # encode
         mu1, logvar1 = self.atac_encoder(atac)
         mu2, logvar2 = self.rna_encoder(rna)
+        # print(mu1.shape)
+        # print(mu2.shape)
+        # print(torch.cat((mu1,mu2), dim=1).shape)
         muz = self.fusion_mu(torch.cat((mu1, mu2), dim=1))
         logvarz = self.fusion_logvar(torch.cat((logvar1, logvar2), dim=1))
         z = self.reparameterize(muz, logvarz)

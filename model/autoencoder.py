@@ -2,13 +2,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class Encoder(nn.Module):
-    def __init__(self, in_channels, latent_channels):
+    def __init__(self, in_channels, layer1_channels = 128, layer2_channels = 64, latent_channels = 2):
         super(Encoder, self).__init__()
 
-        self.lin1 = nn.Linear(in_channels, 128)
-        self.lin2 = nn.Linear(128, 64)
-        self.lin3 = nn.Linear(64, latent_channels)
+        self.lin1 = nn.Linear(in_channels, layer1_channels)
+        self.lin2 = nn.Linear(layer1_channels, layer2_channels)
+        self.lin3 = nn.Linear(layer2_channels, latent_channels)
 
     def forward(self, x):
         x = F.relu(self.lin1(x))
@@ -16,12 +17,12 @@ class Encoder(nn.Module):
         return self.lin3(x)
 
 class Decoder(nn.Module):
-    def __init__(self, latent_channels, out_channels):
+    def __init__(self, out_channels, layer1_channels = 128, layer2_channels = 64, latent_channels = 2):
         super(Decoder, self).__init__()
 
-        self.lin1 = nn.Linear(latent_channels, 64)
-        self.lin2 = nn.Linear(64, 128)
-        self.lin3 = nn.Linear(128, out_channels)
+        self.lin1 = nn.Linear(latent_channels, layer2_channels)
+        self.lin2 = nn.Linear(layer2_channels, layer1_channels)
+        self.lin3 = nn.Linear(layer1_channels, out_channels)
 
     def forward(self, z):
         z = F.relu(self.lin1(z))
@@ -29,15 +30,15 @@ class Decoder(nn.Module):
         return self.lin3(z)
 
 class AutoEncoder(nn.Module):
-    def __init__(self, in_channels_atac, in_channels_rna, latent_channels_atac, latent_channels_rna, latent_channels_z):
+    def __init__(self, in_channels_atac, in_channels_rna, latent_channels_atac, latent_channels_rna, latent_channels_z, layer1_channels = 128, layer2_channels = 64):
         super(AutoEncoder, self).__init__()
-        self.atac_encoder = Encoder(in_channels_atac, latent_channels_atac)
-        self.rna_encoder = Encoder(in_channels_rna, latent_channels_rna)
+        self.atac_encoder = Encoder(in_channels = in_channels_atac, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_atac)
+        self.rna_encoder = Encoder(in_channels = in_channels_rna, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_rna)
+        
+        self.fusion = Encoder(in_channels = latent_channels_atac + latent_channels_rna, layer1_channels = 16, layer2_channels = 8, latent_channels = latent_channels_z)
 
-        self.fusion = Encoder(latent_channels_atac+latent_channels_rna, latent_channels_z)
-
-        self.atac_decoder = Decoder(latent_channels_z, in_channels_atac)
-        self.rna_decoder = Decoder(latent_channels_z, in_channels_rna)
+        self.atac_decoder = Decoder(latent_channels = latent_channels_z, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels_atac)
+        self.rna_decoder = Decoder(latent_channels = latent_channels_z, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels_rna)
 
     def forward(self, atac, rna):
         # encode

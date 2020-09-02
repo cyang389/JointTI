@@ -4,6 +4,8 @@ import pandas as pd
 from sklearn.metrics.pairwise import euclidean_distances
 from scipy.linalg import eigh
 import warnings
+import scipy
+
 warnings.filterwarnings('ignore')
 
 
@@ -66,3 +68,46 @@ def diffusion_map(X, n_eign = None, alpha = 0.009, diffusion_time = 5):
 def diffusion_similarity(diff_map):
     dists = euclidean_distances(diff_map, diff_map)
     return dists
+
+
+def DPT_similarity(data, n_neign = None):
+    '''Calculates DPT between all points in the data, directly ouput similarity matrix, which is the diffusion pseudotime matrix, a little better than diffusion map
+    Parameters:
+        data: feature matrix, numpy.array of the size [n_samples, n_features]
+    
+    Returns:
+        DPT: similarity matrix calculated from diffusion pseudo-time
+    '''
+    import graphtools as gt
+    from scipy.spatial.distance import pdist, squareform
+    # construct graph adjacency matrix with n_pca 100
+    G = gt.Graph(data, n_pca=100, use_pygsp=True)
+    
+    # Calculate eigenvectors of the diffusion operator
+    # G.diff_op is a diffusion operator, return similarity matrix calculated from diffusion operation
+    W, V = scipy.sparse.linalg.eigs(G.diff_op, k=1)
+    
+    # Remove first eigenspace
+    T_tilde = G.diff_op.toarray() - (V[:,0] @ V[:,0].T)
+    
+    # Calculate M
+    I = np.eye(T_tilde.shape[1])
+    M = np.linalg.inv(I - T_tilde) - I
+    M = np.real(M)
+
+    eigenValues, eigenVectors = eigh(M)
+    idx = eigenValues.argsort()[::-1]
+    eigenValues = eigenValues[idx]
+    eigenVectors = eigenVectors[:,idx]
+    
+    diffusion_coordinates = np.matmul(D_left, eigenVectors)
+
+    if n_neign == None:
+        # Calculate DPT
+        DPT = squareform(pdist(M))
+    else:
+        # reduce dimensionality
+        diffusion_coordinates = diffusion_coordinates[:,:n_eign]
+        DPT = euclidean_distances(diff_map, diff_map)
+
+    return DPT

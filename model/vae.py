@@ -114,5 +114,27 @@ class vae(nn.Module):
         else:
             return mu
 
+
+class ae_from_vae(nn.Module):
+    def __init__(self, in_channels, latent_channels, layer1_channels = 128, layer2_channels = 64):
+        super(ae_from_vae, self).__init__()
+        self.encoder = Encoder(in_channels = in_channels, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels)
+
+        self.decoder = Decoder(latent_channels = latent_channels, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels)
+        
+    def forward(self, rna):
+        # encode
+        mu, logvar = self.encoder(rna)
+        # skip sampling
+        return self.decoder(mu), mu, logvar
+
+    def reparameterize(self, mu, logvar):
+        if self.training:
+            std = torch.exp(logvar * 0.5)
+            eps = torch.empty_like(std).normal_()
+            z = mu + (std * eps)
+            return z
+        else:
+            return mu
         
 

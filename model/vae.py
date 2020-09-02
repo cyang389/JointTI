@@ -42,9 +42,9 @@ class Decoder(nn.Module):
         z = F.relu(self.lin2(z))
         return self.lin3(z)
 
-class VAE(nn.Module):
+class aligned_vae(nn.Module):
     def __init__(self, in_channels_atac, in_channels_rna, latent_channels_atac, latent_channels_rna, latent_channels_z, layer1_channels = 128, layer2_channels = 64):
-        super(VAE, self).__init__()
+        super(aligned_vae, self).__init__()
         self.atac_encoder = Encoder(in_channels = in_channels_atac, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_atac)
         self.rna_encoder = Encoder(in_channels = in_channels_rna, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_rna)
         
@@ -63,6 +63,30 @@ class VAE(nn.Module):
         z = self.reparameterize(muz, logvarz)
         # decode
         return self.atac_decoder(z), self.rna_decoder(z), z, logvarz, muz
+
+    def reparameterize(self, mu, logvar):
+        if self.training:
+            std = torch.exp(logvar * 0.5)
+            eps = torch.empty_like(std).normal_()
+            z = mu + (std * eps)
+            return z
+        else:
+            return mu
+
+class vae(nn.Module):
+    def __init__(self, in_channels, latent_channels, layer1_channels = 128, layer2_channels = 64):
+        super(vae, self).__init__()
+        self.encoder = Encoder(in_channels = in_channels, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels)
+
+        self.decoder = Decoder(latent_channels = latent_channels, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels)
+        
+    def forward(self, rna):
+        # encode
+        mu, logvar = self.encoder(rna)
+        # sampling
+        z = self.reparameterize(mu, logvar)
+        # decode
+        return self.decoder(z), z, mu, logvar
 
     def reparameterize(self, mu, logvar):
         if self.training:

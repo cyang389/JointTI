@@ -126,7 +126,8 @@ class ae_from_vae(nn.Module):
         # encode
         mu, logvar = self.encoder(rna)
         # skip sampling
-        return self.decoder(mu), mu, logvar
+        recon = self.decoder(mu)
+        return recon, mu, logvar
 
     def reparameterize(self, mu, logvar):
         if self.training:
@@ -138,3 +139,26 @@ class ae_from_vae(nn.Module):
             return mu
         
 
+class AE(nn.Module):
+  def __init__(self, **kwarg):
+    super().__init__()
+    n_features = kwarg["n_features"]
+    n_embed = kwarg["n_embed"]
+    self.encoder_hidden1 = nn.Linear(in_features=n_features, out_features=128)
+    self.relu1 = nn.ReLU()
+    self.encoder_hidden2 = nn.Linear(in_features=128, out_features= 32)
+    self.relu2 = nn.ReLU()
+    self.encoder_output = nn.Linear(in_features=32, out_features=n_embed)
+    self.relu3 = nn.ReLU()
+    self.decoder_hidden1 = nn.Linear(in_features=n_embed, out_features=32)
+    self.relu4 = nn.ReLU()
+    self.decoder_hidden2 = nn.Linear(in_features=32, out_features=128)
+    self.relu5 = nn.ReLU()
+    self.decoder_output = nn.Linear(in_features=128, out_features=n_features)
+  
+  def forward(self, x):
+    # embedded, bottle neck of the output
+    x_embed = self.relu3(self.encoder_output(self.relu2(self.encoder_hidden2(self.relu1(self.encoder_hidden1(x))))))
+    # final output
+    x = self.decoder_output(self.relu5(self.decoder_hidden2(self.relu4(self.decoder_hidden1(x_embed)))))
+    return x_embed, x

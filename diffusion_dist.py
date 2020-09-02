@@ -100,14 +100,16 @@ def DPT_similarity(data, n_neign = None):
     eigenValues = eigenValues[idx]
     eigenVectors = eigenVectors[:,idx]
     
-    diffusion_coordinates = np.matmul(D_left, eigenVectors)
+    DPT = squareform(pdist(M))
+    
+    # diffusion_coordinates = np.matmul(D_left, eigenVectors)
 
-    if n_neign == None:
-        # Calculate DPT
-        DPT = squareform(pdist(M))
-    else:
-        # reduce dimensionality
-        diffusion_coordinates = diffusion_coordinates[:,:n_eign]
-        DPT = euclidean_distances(diff_map, diff_map)
+    # if n_neign == None:
+    #     # Calculate DPT
+    #     DPT = squareform(pdist(M))
+    # else:
+    #     # reduce dimensionality
+    #     diffusion_coordinates = diffusion_coordinates[:,:n_eign]
+    #     DPT = euclidean_distances(diff_map, diff_map)
 
     return DPT

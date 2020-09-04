@@ -15,14 +15,14 @@ class GraphConvolutionSage(nn.Module):
         self.out_features = out_features
         self.dropout = dropout
 
-        self.weight_neigh = Parameter(torch.FloatTensor(2 * out_features, 2 * out_features))
-        self.weight_self = Parameter(torch.FloatTensor(in_features, 2 * out_features))
-        self.weight_support = Parameter(torch.FloatTensor(in_features, 2 * out_features))
-        self.weight_linear = Parameter(torch.FloatTensor(2 * out_features, out_features))
+        self.weight_neigh = Parameter(torch.FloatTensor(out_features, out_features))
+        self.weight_self = Parameter(torch.FloatTensor(in_features, out_features))
+        self.weight_support = Parameter(torch.FloatTensor(in_features, out_features))
+        self.weight_linear = Parameter(torch.FloatTensor(out_features, out_features))
 
 
         # with dimension (1, out_features), with broadcast -> (N, Dout)
-        self.bias_support = Parameter(torch.FloatTensor(1, 2 * out_features))
+        self.bias_support = Parameter(torch.FloatTensor(1, out_features))
         self.bias_linear = Parameter(torch.FloatTensor(1, out_features))
 
     def reset_parameters(self):
@@ -50,8 +50,11 @@ class GraphConvolutionSage(nn.Module):
         # Update: 
         # output of dimension N * Dout, 
         # tried tanh and relu, not very good result, add one linear layer
-        output = F.tanh(torch.mm(output, self.weight_neigh) + torch.mm(input, self.weight_self))
-        output = torch.mm(output, self.weight_linear) + self.bias_linear
+        output = F.relu(torch.mm(output, self.weight_neigh) + torch.mm(input, self.weight_self))
+        # output = torch.mm(output, self.weight_linear) + self.bias_linear
+        
+        print("support", support)
+        print("output", output)
 
         return output
 

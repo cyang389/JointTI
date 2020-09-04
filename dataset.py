@@ -91,20 +91,41 @@ def graphdata(path, k, diff = "diffmap"):
 
     # normalize
     if diff == "diffmap":
-        diff_dist = normalize(diff_map_dist(data_pca, n_eign = 10, alpha = 100, diffusion_time = 5))
+        diff_dist = diff_map_dist(data_pca, n_eign = 10, alpha = 100, diffusion_time = 5)
     elif diff == "dpt":
-        diff_dist = normalize(dpt_dist(data_pca))
+        diff_dist = dpt_dist(data_pca)
 
     conn = kneighbors_graph(diff_dist, n_neighbors = k, include_self = False).toarray()
-    conn = conn * conn.T
+    # conn = conn * conn.T
     conn_diff = conn * diff_dist
 
     sim_matrix = conn / diff_dist
     sim_matrix[np.isnan(sim_matrix)] = 0
-    sim_matrix = torch.FloatTensor(normalize(np.log1p(sim_matrix)))
+    sim_matrix = torch.FloatTensor(sim_matrix / np.sum(sim_matrix, axis=1)[:,None])
     
     X = torch.FloatTensor(data)
     adj_diff = torch.FloatTensor(conn_diff)
     edge_index_diff = torch.LongTensor(np.array(np.nonzero(adj_diff)))
 
+
     return {"X": X, "adj": adj_diff, "edge_index": edge_index_diff, "similarity": sim_matrix}
+
+def testgraphdata(path, k, diff = "diffmap"):
+
+    data = np.tile(np.arange(100), (100, 1)) + np.tile(np.arange(100)[:,None], 100)
+    diff_dist = dpt_dist(data)
+    conn = kneighbors_graph(diff_dist, n_neighbors = k, include_self = False).toarray()
+    # conn = conn * conn.T
+    conn_diff = conn * diff_dist
+
+    sim_matrix = conn / diff_dist
+    sim_matrix[np.isnan(sim_matrix)] = 0
+    sim_matrix = torch.FloatTensor(sim_matrix / np.sum(sim_matrix, axis=1)[:,None])
+    
+    X = torch.FloatTensor(data)
+    adj_diff = torch.FloatTensor(conn_diff)
+    edge_index_diff = torch.LongTensor(np.array(np.nonzero(adj_diff)))
+
+
+    return {"X": X, "adj": adj_diff, "edge_index": edge_index_diff, "similarity": sim_matrix}
+

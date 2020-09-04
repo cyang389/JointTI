@@ -18,22 +18,17 @@ class GraphConvolutionSage(nn.Module):
         self.weight_neigh = Parameter(torch.FloatTensor(out_features, out_features))
         self.weight_self = Parameter(torch.FloatTensor(in_features, out_features))
         self.weight_support = Parameter(torch.FloatTensor(in_features, out_features))
-        self.weight_linear = Parameter(torch.FloatTensor(out_features, out_features))
-
 
         # with dimension (1, out_features), with broadcast -> (N, Dout)
         self.bias_support = Parameter(torch.FloatTensor(1, out_features))
-        self.bias_linear = Parameter(torch.FloatTensor(1, out_features))
 
     def reset_parameters(self):
         torch.nn.init.xavier_uniform_(self.weight_neigh)
         torch.nn.init.xavier_uniform_(self.weight_self)
         torch.nn.init.xavier_uniform_(self.weight_support)
-        torch.nn.init.xavier_uniform_(self.weight_linear)
 
         # initialization requires two dimension
         torch.nn.init.xavier_uniform_(self.bias_support)
-        torch.nn.init.xavier_uniform_(self.bias_linear)
         
 
     def forward(self, input, adj):
@@ -51,18 +46,13 @@ class GraphConvolutionSage(nn.Module):
         # output of dimension N * Dout, 
         # tried tanh and relu, not very good result, add one linear layer
         output = F.relu(torch.mm(output, self.weight_neigh) + torch.mm(input, self.weight_self))
-        # output = torch.mm(output, self.weight_linear) + self.bias_linear
         
-        print("support", support)
-        print("output", output)
-
         return output
 
     def __repr__(self):
         return self.__class__.__name__ + ' (' \
                + str(self.in_features) + ' -> ' \
                + str(self.out_features) + ')'
-
 
 
 class pairwiseDistDecoder(nn.Module):
@@ -159,52 +149,33 @@ class gnn_vae(nn.Module):
 
 
 class gnn_ae(nn.Module):
-    def __init__(self, input_feat_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout = 0., use_mlp = True, decoder = "distance"):
+    def __init__(self, input_feat_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout = 0.):
         super(gnn_ae, self).__init__()
 
         self.gc1 = GraphConvolutionSage(input_feat_dim, hidden_dim1, dropout)
-        # the later two layers with activation linear
         self.gc2 = GraphConvolutionSage(hidden_dim1, hidden_dim2, dropout)
 
         # final layer can be either graph conv or linear
-        self.gc3 = GraphConvolutionSage(hidden_dim2, hidden_dim3, dropout)
-
-        self.fc1 = nn.Linear(in_features = hidden_dim2, out_features = hidden_dim3, bias = True)
+        self.fc1 = nn.Linear(hidden_dim2, hidden_dim3)
         
-        self.dc_pairwise = pairwiseDistDecoder(dropout)
-        self.dc_inner_prod = InnerProductDecoder(dropout)
-
-        self.use_mlp = use_mlp
-        self.decoder_ver = decoder
+        self.dc = pairwiseDistDecoder(dropout)
 
 
     def reset_parameters(self):
         self.gc1.reset_parameters()
         self.gc2.reset_parameters()
-        self.gc3.reset_parameters()
         self.fc1.reset_parameters()
-
 
     def encode(self, x, adj):
         # N * hidden_dim1
         hidden1 = self.gc2(self.gc1(x, adj), adj)
         # mean and variance of the dimension N * hidden_dim2
-        if self.use_mlp == True:
-            z = self.fc1(hidden1)
-        else:
-            z = self.gc3(hidden1, adj)
-        return z
-
+        return self.fc1(hidden1)
+  
     def forward(self, x, adj):
-        z = self.encode(x, adj)
-        
-        if self.decoder_ver == "distance":
-            adj_recon = self.dc_pairwise(z)
-        elif self.decoder_ver == "inner-product":
-            adj_recon = self.dc_inner_prod(z)       
-        
-
-        return adj_recon, z
+        z = self.encode(x, adj)      
+        adj_recon = self.dc(z)
+        return adj_recon, z        
 
 
 class aligned_gvae(nn.Module):
@@ -227,11 +198,11 @@ class aligned_gvae(nn.Module):
 
 
 class aligned_gae(nn.Module):
-    def __init__(self, feature1_dim, feature2_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout = 0., use_mlp = True, decoder = "distance"):
+    def __init__(self, feature1_dim, feature2_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout = 0.):
         super(aligned_gae, self).__init__()
 
-        self.gae1 = gnn_ae(feature1_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout = dropout, use_mlp = use_mlp, decoder = decoder)
-        self.gae2 = gnn_ae(feature2_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout=dropout, use_mlp = use_mlp, decoder = decoder)
+        self.gae1 = gnn_ae(feature1_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout = dropout)
+        self.gae2 = gnn_ae(feature2_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout = dropout)
     
     def reset_parameters(self):
         self.gae1.reset_parameters()
@@ -240,6 +211,6 @@ class aligned_gae(nn.Module):
     def forward(self, x1, x2, adj1, adj2):
         adj_recon1, z1 = self.gae1(x1, adj1)
         adj_recon2, z2 = self.gae2(x2, adj2)
-
+                
         return adj_recon1, adj_recon2, z1, z2
 

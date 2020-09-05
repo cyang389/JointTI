@@ -31,12 +31,12 @@ class GraphConvolutionSage(nn.Module):
         torch.nn.init.xavier_uniform_(self.bias_support)
         
 
-    def forward(self, input, adj):
+    def forward(self, x, adj):
         # first dropout some inputs
-        input = F.dropout(input, self.dropout, self.training)
+        x = F.dropout(x, self.dropout, self.training)
 
         # Message: two ways
-        support = F.sigmoid(torch.mm(input, self.weight_support) + self.bias_support)
+        support = F.sigmoid(torch.mm(x, self.weight_support) + self.bias_support)
 
         # Aggregation:
         # addition here, could try element-wise max, make diagonal position 0
@@ -45,7 +45,7 @@ class GraphConvolutionSage(nn.Module):
         # Update: 
         # output of dimension N * Dout, 
         # tried tanh and relu, not very good result, add one linear layer
-        output = F.relu(torch.mm(output, self.weight_neigh) + torch.mm(input, self.weight_self))
+        output = F.relu(torch.mm(output, self.weight_neigh) + torch.mm(x, self.weight_self))
         
         return output
 
@@ -149,14 +149,16 @@ class gnn_vae(nn.Module):
 
 
 class gnn_ae(nn.Module):
-    def __init__(self, input_feat_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout = 0.):
+    def __init__(self, input_feat_dim, hidden_dim1, hidden_dim2, hidden_dim3, hidden_dim4, hidden_dim5, dropout = 0.):
         super(gnn_ae, self).__init__()
 
         self.gc1 = GraphConvolutionSage(input_feat_dim, hidden_dim1, dropout)
         self.gc2 = GraphConvolutionSage(hidden_dim1, hidden_dim2, dropout)
+        self.gc3 = GraphConvolutionSage(hidden_dim2, hidden_dim3, dropout)
 
         # final layer can be either graph conv or linear
-        self.fc1 = nn.Linear(hidden_dim2, hidden_dim3)
+        self.fc1 = nn.Linear(hidden_dim3, hidden_dim4)
+        self.fc2 = nn.Linear(hidden_dim4, hidden_dim5)
         
         self.dc = pairwiseDistDecoder(dropout)
 
@@ -164,13 +166,17 @@ class gnn_ae(nn.Module):
     def reset_parameters(self):
         self.gc1.reset_parameters()
         self.gc2.reset_parameters()
+        self.gc3.reset_parameters()
+        
         self.fc1.reset_parameters()
+        self.fc2.reset_parameters()
+        
 
     def encode(self, x, adj):
         # N * hidden_dim1
-        hidden1 = self.gc2(self.gc1(x, adj), adj)
+        hidden1 = self.gc3(self.gc2(self.gc1(x, adj), adj), adj)
         # mean and variance of the dimension N * hidden_dim2
-        return self.fc1(hidden1)
+        return self.fc2(self.fc1(hidden1))
   
     def forward(self, x, adj):
         z = self.encode(x, adj)      
@@ -183,7 +189,7 @@ class aligned_gvae(nn.Module):
         super(aligned_gvae, self).__init__()
 
         self.gvae1 = gnn_vae(feature1_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout = dropout, use_mlp = use_mlp, decoder = decoder)
-        self.gvae2 = gnn_vae(feature2_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout=dropout, use_mlp = use_mlp, decoder = decoder)
+        self.gvae2 = gnn_vae(feature2_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout = dropout, use_mlp = use_mlp, decoder = decoder)
     
     def reset_parameters(self):
         self.gvae1.reset_parameters()
@@ -198,11 +204,11 @@ class aligned_gvae(nn.Module):
 
 
 class aligned_gae(nn.Module):
-    def __init__(self, feature1_dim, feature2_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout = 0.):
+    def __init__(self, feature1_dim, feature2_dim, hidden_dim1, hidden_dim2, hidden_dim3, hidden_dim4, hidden_dim5, dropout = 0.):
         super(aligned_gae, self).__init__()
 
-        self.gae1 = gnn_ae(feature1_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout = dropout)
-        self.gae2 = gnn_ae(feature2_dim, hidden_dim1, hidden_dim2, hidden_dim3, dropout = dropout)
+        self.gae1 = gnn_ae(feature1_dim, hidden_dim1, hidden_dim2, hidden_dim3, hidden_dim4, hidden_dim5, dropout = dropout)
+        self.gae2 = gnn_ae(feature2_dim, hidden_dim1, hidden_dim2, hidden_dim3, hidden_dim4, hidden_dim5, dropout = dropout)
     
     def reset_parameters(self):
         self.gae1.reset_parameters()

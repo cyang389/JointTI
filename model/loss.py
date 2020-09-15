@@ -2,7 +2,21 @@ import torch
 import torch.nn.functional as F
 
 
+def pairwise_distance(x):
+    x_norm = (x**2).sum(1).view(-1, 1)
+    y_norm = x_norm.view(1, -1)
+    dist = x_norm + y_norm - 2.0 * torch.mm(x, torch.transpose(x, 0, 1))
+    
+    # # nan for approx 0 distance
+    # dist = torch.sqrt(dist)
+    return dist 
+
+
 def gvae_loss(latent1, latent2, adj1, adj2, recon_adj1, recon_adj2, logvar_latent1, logvar_latent2, lamb_align, lamb_kl, dist_loss_type = "cosine"):
+    
+    # make squared
+    adj1 = adj1 ** 2
+    adj2 = adj2 ** 2
 
     loss_align = lamb_align * torch.norm(latent1 - latent2, p = 'fro')
 
@@ -101,3 +115,50 @@ def aligned_gae_loss(latent1, latent2, adj1, adj2, recon_adj1, recon_adj2, lamb_
     loss = loss_align + similarity_loss1 + similarity_loss2 
     
     return loss, loss_align, similarity_loss1,  similarity_loss2
+
+
+
+def ae_loss(recon_x1, recon_x2, x1, x2, z, dist_x1, dist_x2, lamb, lamb_var, dist_loss_type = "cosine"):
+    
+    
+    # loss_recon_rna = F.mse_loss(recon_rna, rna)
+    # loss_recon_atac = F.mse_loss(recon_atac, atac)
+    loss_x1 = torch.norm(recon_x1 - x1, p = "fro")
+    loss_x2 = torch.norm(recon_x2 - x2, p = "fro")
+
+    # loss_variance = - lamb_var * (torch.sum((z[:,0] - torch.mean(z[:,0])) ** 2) + torch.sum((z[:,1] - torch.mean(z[:,1])) ** 2))
+
+    # cosine similarity loss, don't forget to normalize the matrix before calculate inner product
+    if dist_loss_type == "cosine":
+        # diff_atac and diff_rna are only constant, but better to be normalized
+        dist_recon = pairwise_distance(z)
+        # normalize latent similarity matrix
+        dist_recon = dist_recon / torch.norm(dist_recon, p='fro')
+
+        # inner product loss, maximize, so add negative before, in addition, make sure those two values are normalized, with norm 1
+        loss_dist_x1 = - lamb * torch.sum(dist_x1 * dist_recon)
+        loss_dist_x2 = - lamb * torch.sum(dist_x2 * dist_recon)
+
+    # pearson correlationship
+    elif dist_loss_type == "pearson":
+        dist_recon = pairwise_distance(z)
+        Vs = dist_recon - torch.mean(dist_recon)
+
+        Vd_x1 = dist_x1 - torch.mean(dist_x1)
+        Vd_x2 = dist_x2 - torch.mean(dist_x2)
+
+        # maximize correlationship
+        loss_dist_x1 = - lamb * torch.sum(Vs * Vd_x1) / (torch.sqrt(torch.sum(Vs ** 2)) * torch.sqrt(torch.sum(Vd_x1 ** 2)))
+        loss_dist_x2 = - lamb * torch.sum(Vs * Vd_x2) / (torch.sqrt(torch.sum(Vs ** 2)) * torch.sqrt(torch.sum(Vd_x2 ** 2)))
+    
+    # mse loss
+    elif dist_loss_type == "mse":
+#         loss_dist_x1 = lamb * F.mse_loss(dist_x1.reshape(-1), pairwise_distance(z).reshape(-1))
+#         loss_dist_x2 = lamb * F.mse_loss(dist_x2.reshape(-1), pairwise_distance(z).reshape(-1))
+        dist_recon = pairwise_distance(z)
+        loss_dist_x1 = lamb * torch.norm(dist_x1/torch.norm(dist_x1, p = "fro") - dist_recon/torch.norm(dist_recon, p = "fro"), p = "fro")
+        loss_dist_x2 = lamb * torch.norm(dist_x2/torch.norm(dist_x2, p = "fro") - dist_recon/torch.norm(dist_recon, p = "fro"), p = "fro")
+
+    loss = loss_x1 + loss_x2 + loss_dist_x1 + loss_dist_x2
+    return loss, loss_x1, loss_x2,  loss_dist_x1,  loss_dist_x2
+

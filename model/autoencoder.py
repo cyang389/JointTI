@@ -29,9 +29,9 @@ class Decoder(nn.Module):
         z = F.relu(self.lin2(z))
         return self.lin3(z)
 
-class AutoEncoder(nn.Module):
+class oldAutoEncoder(nn.Module):
     def __init__(self, in_channels_atac, in_channels_rna, latent_channels_atac, latent_channels_rna, latent_channels_z, layer1_channels = 128, layer2_channels = 64):
-        super(AutoEncoder, self).__init__()
+        super(oldAutoEncoder, self).__init__()
         self.atac_encoder = Encoder(in_channels = in_channels_atac, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_atac)
         self.rna_encoder = Encoder(in_channels = in_channels_rna, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_rna)
         
@@ -48,3 +48,23 @@ class AutoEncoder(nn.Module):
 
         # decode
         return self.atac_decoder(z), self.rna_decoder(z), z
+
+class AutoEncoder(nn.Module):
+    def __init__(self, in_channels_atac, in_channels_rna, latent_channels_atac, latent_channels_rna, latent_channels_z, layer1_channels = 128, layer2_channels = 64):
+        super(AutoEncoder, self).__init__()
+        self.atac_encoder = Encoder(in_channels = in_channels_atac, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_atac)
+        self.rna_encoder = Encoder(in_channels = in_channels_rna, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_rna)
+        
+        self.fusion = nn.Linear(latent_channels_atac + latent_channels_rna, latent_channels_z)
+
+        self.atac_decoder = Decoder(latent_channels = latent_channels_atac, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels_atac)
+        self.rna_decoder = Decoder(latent_channels = latent_channels_rna, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels_rna)
+
+    def forward(self, atac, rna):
+        # encode
+        latent_atac = self.atac_encoder(atac)
+        latent_rna = self.rna_encoder(rna)
+        z = self.fusion(torch.cat((latent_atac, latent_rna), dim=1))
+
+        # decode
+        return self.atac_decoder(latent_atac), self.rna_decoder(latent_rna), z, latent_atac, latent_rna

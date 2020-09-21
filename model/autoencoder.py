@@ -3,42 +3,114 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class Encoder(nn.Module):
-    def __init__(self, in_channels, layer1_channels = 128, layer2_channels = 64, latent_channels = 2):
-        super(Encoder, self).__init__()
+CONFIG = { 
+    'in_features': 500,
+    'layers': [512, 256, 128, 2], # number of nodes in each layer of encoder and decoder.
+    'learning_rate': 1e-3, # learning rate of optimizer.
+    'minibatch_size': 256,
+    'use_batchnorm': True, # use batch normalization layer.
+#     'max_iterations': 1000, # max iteration steps
+#     'log_interval': 100, # interval of steps to display loss information.
+#     'use_gpu': False, 
+#     'train_dir': './tmp', # dir to save the state of the model
+#     'data_dir': './data', # input files dir
+#     'out_dir': './results', # dir to output result files
+#     'seed':13 # seed of random number generators
+}
 
-        self.lin1 = nn.Linear(in_channels, layer1_channels)
-        self.lin2 = nn.Linear(layer1_channels, layer2_channels)
-        self.lin3 = nn.Linear(layer2_channels, latent_channels)
+class Encoder(nn.Module):
+    def __init__(self, cfg):
+        self.hidden_layer1 = nn.Linear(in_features = cfg['in_features'], out_features = cfg['layers'][0])
+        self.lrelu_1 = nn.LeakyReLU(negative_slope = 0.2)
+
+        self.hidden_layer2 = nn.Linear(in_features = cfg['layers'][0], out_features = cfg['layers'][1])
+        self.lrelu_2 = nn.LeakyReLU(negative_slope = 0.2)
+
+        self.hidden_layer3 = nn.Linear(in_features = cfg['layers'][1], out_features = cfg['layers'][2])
+        self.lrelu_3 = nn.LeakyReLU(negative_slope = 0.2)
+
+        self.hidden_layer4 = nn.Linear(in_features = cfg['layers'][2], out_features = cfg['layers'][3])
+        
+        if cfg['use_batchnorm']:
+            self.batch_norm1 = nn.BatchNorm1d(num_features = cfg['layers'][0])
+            self.batch_norm2 = nn.BatchNorm1d(num_features = cfg['layers'][1])
+            self.batch_norm3 = nn.BatchNorm1d(num_features = cfg['layers'][2])
+
 
     def forward(self, x):
-        x = F.relu(self.lin1(x))
-        x = F.relu(self.lin2(x))
-        return self.lin3(x)
+        if cfg['use_batchnorm']:
+            x = self.lrelu_1(self.batch_norm1(self.hidden_layer1(x)))
+            x = self.lrelu_2(self.batch_norm2(self.hidden_layer2(x)))
+            x = self.lrelu_3(self.batch_norm3(self.hidden_layer3(x)))
+            embed = self.hidden_layer4(x)
+        
+        else:
+            x = self.lrelu_1(self.hidden_layer1(x))
+            x = self.lrelu_2(self.hidden_layer2(x))
+            x = self.lrelu_3(self.hidden_layer3(x))
+            embed = self.hidden_layer4(x)
+            
+        return embed
 
 class Decoder(nn.Module):
-    def __init__(self, out_channels, layer1_channels = 128, layer2_channels = 64, latent_channels = 2):
-        super(Decoder, self).__init__()
+    def __init__(self, cfg):
+        self.hidden_layer1 = nn.Linear(in_features = cfg['layers'][3], out_features = cfg['layers'][2])
+        self.lrelu_1 = nn.LeakyReLU(negative_slope = 0.2)
 
-        self.lin1 = nn.Linear(latent_channels, layer2_channels)
-        self.lin2 = nn.Linear(layer2_channels, layer1_channels)
-        self.lin3 = nn.Linear(layer1_channels, out_channels)
+        self.hidden_layer2 = nn.Linear(in_features = cfg['layers'][2], out_features = cfg['layers'][1])
+        self.lrelu_2 = nn.LeakyReLU(negative_slope = 0.2)
 
-    def forward(self, z):
-        z = F.relu(self.lin1(z))
-        z = F.relu(self.lin2(z))
-        return self.lin3(z)
+        self.hidden_layer3 = nn.Linear(in_features = cfg['layers'][1], out_features = cfg['layers'][0])
+        self.lrelu_3 = nn.LeakyReLU(negative_slope = 0.2)
+
+        self.hidden_layer4 = nn.Linear(in_features = cfg['layers'][0], out_features = cfg['in_features'])
+        
+        if cfg['use_batchnorm']:
+            self.batch_norm1 = nn.BatchNorm1d(num_features = cfg['layers'][0])
+            self.batch_norm2 = nn.BatchNorm1d(num_features = cfg['layers'][1])
+            self.batch_norm3 = nn.BatchNorm1d(num_features = cfg['layers'][2])
+
+
+
+    def forward(self, embed):
+        if cfg['use_batchnorm']:
+            x = self.lrelu_1(self.batch_norm1(self.hidden_layer1(embed)))
+            x = self.lrelu_2(self.batch_norm2(self.hidden_layer2(x)))
+            x = self.lrelu_3(self.batch_norm3(self.hidden_layer3(x)))
+            recon = self.hidden_layer4(x)
+        
+        else:
+            x = self.lrelu_1(self.hidden_layer1(embed))
+            x = self.lrelu_2(self.hidden_layer2(x))
+            x = self.lrelu_3(self.hidden_layer3(x))
+            recon = self.hidden_layer4(x)
+            
+        return recon
+
+class Fusion(nn.Module):
+    def __init__(self, in_channels, embed_channels = 2):
+        super(Fusion, self).__init__()
+        self.linear = nn.Linear(in_channels, embed_channels)
+#         self.hidden = nn.Linear(in_channels, hidden_channels)
+#         self.output = nn.Linear(hidden_channels, embed_channels)
+#         self.lrelu = nn.LeakyRelu(negative_slope = 0.2)
+   
+    def forward(self, x):
+#         embed = self.output(self.lrelu(self.hidden(x)))
+        return self.linear(x)
+
 
 class oldAutoEncoder(nn.Module):
-    def __init__(self, in_channels_atac, in_channels_rna, latent_channels_atac, latent_channels_rna, latent_channels_z, layer1_channels = 128, layer2_channels = 64):
+    def __init__(self, cfg_rna, cfg_atac):
         super(oldAutoEncoder, self).__init__()
-        self.atac_encoder = Encoder(in_channels = in_channels_atac, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_atac)
-        self.rna_encoder = Encoder(in_channels = in_channels_rna, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_rna)
         
-        self.fusion = Encoder(in_channels = latent_channels_atac + latent_channels_rna, layer1_channels = latent_channels_z * 4, layer2_channels = latent_channels_z * 2, latent_channels = latent_channels_z)
+        self.atac_encoder = Encoder(cfg_atac)
+        self.rna_encoder = Encoder(cfg_atac)
+        
+        self.fusion = Fusion(in_channels = cfg_rna['layers'][-1] + cfg_atac['layers'][-1], embed_channels = 2)
 
-        self.atac_decoder = Decoder(latent_channels = latent_channels_z, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels_atac)
-        self.rna_decoder = Decoder(latent_channels = latent_channels_z, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels_rna)
+        self.atac_decoder = Decoder(cfg_atac)
+        self.rna_decoder = Decoder(cfg_rna)
 
     def forward(self, atac, rna):
         # encode
@@ -49,16 +121,17 @@ class oldAutoEncoder(nn.Module):
         # decode
         return self.atac_decoder(z), self.rna_decoder(z), z
 
+    
 class AutoEncoder(nn.Module):
-    def __init__(self, in_channels_atac, in_channels_rna, latent_channels_atac, latent_channels_rna, latent_channels_z, layer1_channels = 128, layer2_channels = 64):
+    def __init__(self, , cfg_rna, cfg_atac):
         super(AutoEncoder, self).__init__()
-        self.atac_encoder = Encoder(in_channels = in_channels_atac, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_atac)
-        self.rna_encoder = Encoder(in_channels = in_channels_rna, layer1_channels = layer1_channels, layer2_channels = layer2_channels, latent_channels = latent_channels_rna)
+        self.atac_encoder = Encoder(cfg_atac)
+        self.rna_encoder = Encoder(cfg_rna)
         
-        self.fusion = nn.Linear(latent_channels_atac + latent_channels_rna, latent_channels_z)
+        self.fusion = Fusion(in_channels = cfg_rna['layers'][-1] + cfg_atac['layers'][-1], embed_channels = 2)
 
-        self.atac_decoder = Decoder(latent_channels = latent_channels_atac, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels_atac)
-        self.rna_decoder = Decoder(latent_channels = latent_channels_rna, layer1_channels = layer1_channels, layer2_channels = layer2_channels, out_channels = in_channels_rna)
+        self.atac_decoder = Decoder(cfg_atac)
+        self.rna_decoder = Decoder(cfg_rna)
 
     def forward(self, atac, rna):
         # encode

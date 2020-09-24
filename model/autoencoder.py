@@ -6,7 +6,6 @@ import torch.nn.functional as F
 CONFIG = { 
     'in_features': 500,
     'layers': [512, 256, 128, 2], # number of nodes in each layer of encoder and decoder.
-    'learning_rate': 1e-3, # learning rate of optimizer.
     'minibatch_size': 256,
     'use_batchnorm': True, # use batch normalization layer.
 #     'max_iterations': 1000, # max iteration steps
@@ -19,7 +18,11 @@ CONFIG = {
 }
 
 class Encoder(nn.Module):
-    def __init__(self, cfg):
+    def __init__(self, cfg = CONFIG):
+        super(Encoder, self).__init__()
+        
+        self.cfg = cfg
+        
         self.hidden_layer1 = nn.Linear(in_features = cfg['in_features'], out_features = cfg['layers'][0])
         self.lrelu_1 = nn.LeakyReLU(negative_slope = 0.2)
 
@@ -31,14 +34,14 @@ class Encoder(nn.Module):
 
         self.hidden_layer4 = nn.Linear(in_features = cfg['layers'][2], out_features = cfg['layers'][3])
         
-        if cfg['use_batchnorm']:
-            self.batch_norm1 = nn.BatchNorm1d(num_features = cfg['layers'][0])
-            self.batch_norm2 = nn.BatchNorm1d(num_features = cfg['layers'][1])
-            self.batch_norm3 = nn.BatchNorm1d(num_features = cfg['layers'][2])
+        if self.cfg['use_batchnorm']:
+            self.batch_norm1 = nn.BatchNorm1d(num_features = self.cfg['layers'][0])
+            self.batch_norm2 = nn.BatchNorm1d(num_features = self.cfg['layers'][1])
+            self.batch_norm3 = nn.BatchNorm1d(num_features = self.cfg['layers'][2])
 
 
     def forward(self, x):
-        if cfg['use_batchnorm']:
+        if self.cfg['use_batchnorm']:
             x = self.lrelu_1(self.batch_norm1(self.hidden_layer1(x)))
             x = self.lrelu_2(self.batch_norm2(self.hidden_layer2(x)))
             x = self.lrelu_3(self.batch_norm3(self.hidden_layer3(x)))
@@ -53,7 +56,11 @@ class Encoder(nn.Module):
         return embed
 
 class Decoder(nn.Module):
-    def __init__(self, cfg):
+    def __init__(self, cfg = CONFIG):
+        super(Decoder, self).__init__() 
+        
+        self.cfg = cfg
+        
         self.hidden_layer1 = nn.Linear(in_features = cfg['layers'][3], out_features = cfg['layers'][2])
         self.lrelu_1 = nn.LeakyReLU(negative_slope = 0.2)
 
@@ -65,15 +72,15 @@ class Decoder(nn.Module):
 
         self.hidden_layer4 = nn.Linear(in_features = cfg['layers'][0], out_features = cfg['in_features'])
         
-        if cfg['use_batchnorm']:
-            self.batch_norm1 = nn.BatchNorm1d(num_features = cfg['layers'][0])
+        if self.cfg['use_batchnorm']:
+            self.batch_norm1 = nn.BatchNorm1d(num_features = cfg['layers'][2])
             self.batch_norm2 = nn.BatchNorm1d(num_features = cfg['layers'][1])
-            self.batch_norm3 = nn.BatchNorm1d(num_features = cfg['layers'][2])
+            self.batch_norm3 = nn.BatchNorm1d(num_features = cfg['layers'][0])
 
 
 
     def forward(self, embed):
-        if cfg['use_batchnorm']:
+        if self.cfg['use_batchnorm']:
             x = self.lrelu_1(self.batch_norm1(self.hidden_layer1(embed)))
             x = self.lrelu_2(self.batch_norm2(self.hidden_layer2(x)))
             x = self.lrelu_3(self.batch_norm3(self.hidden_layer3(x)))
@@ -123,7 +130,7 @@ class oldAutoEncoder(nn.Module):
 
     
 class AutoEncoder(nn.Module):
-    def __init__(self, , cfg_rna, cfg_atac):
+    def __init__(self, cfg_rna, cfg_atac):
         super(AutoEncoder, self).__init__()
         self.atac_encoder = Encoder(cfg_atac)
         self.rna_encoder = Encoder(cfg_rna)

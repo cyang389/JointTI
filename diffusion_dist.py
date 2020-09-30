@@ -102,7 +102,7 @@ def phate_similarity(data, n_neigh = 5, t = 5, use_potential = True):
     T_t = np.linalg.matrix_power(T, t)
     # calculate potential distance used as feature vector for each cell
     if use_potential:
-        U_t = - np.log(T_t)
+        U_t = - np.log(T_t + 1e-7)
     else:
         U_t = T_t
     # calculate pairwise feature vector distance

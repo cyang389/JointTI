@@ -13,6 +13,10 @@ from scipy.sparse import csr_matrix
 import scvelo as scv
 import scanpy as sc
 
+from sklearn import manifold, datasets
+
+
+
 def latent_semantic_indexing(X, k = None):
     """\
         Compute LSI with TF-IDF transform, i.e. SVD on document matrix
@@ -95,6 +99,28 @@ class scDataset(Dataset):
         
         return sample
 
+    
+class test_s_curve(Dataset):
+    
+    def __init__(self):
+        n_points = 3000
+        X, color = datasets.make_s_curve(n_points, random_state=0)
+        self.expr_RNA = torch.FloatTensor(X)
+        self.time = color
+        
+        
+    def __len__(self):
+        # number of cells
+        return len(self.expr_RNA)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        
+        # index denote the index of the cell
+        sample = {'RNA':self.expr_RNA[idx,:], 'index':idx, 'time': self.time[idx]}
+        
+        return sample
 
 class testDataset(Dataset):
 

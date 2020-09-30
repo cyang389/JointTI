@@ -160,7 +160,7 @@ class gnn_ae(nn.Module):
         self.fc1 = nn.Linear(hidden_dim3, hidden_dim4)
         self.fc2 = nn.Linear(hidden_dim4, hidden_dim5)
         
-        self.dc = pairwiseDistDecoder(dropout)
+        # self.dc = pairwiseDistDecoder(dropout)
 
 
     def reset_parameters(self):
@@ -180,8 +180,8 @@ class gnn_ae(nn.Module):
   
     def forward(self, x, adj):
         z = self.encode(x, adj)      
-        adj_recon = self.dc(z)
-        return adj_recon, z        
+        # adj_recon = self.dc(z)
+        return z        
 
 
 class aligned_gvae(nn.Module):

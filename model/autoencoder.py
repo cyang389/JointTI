@@ -107,6 +107,65 @@ class Fusion(nn.Module):
         return self.linear(x)
 
 
+
+#################################################################################
+
+#                           TEST, with only one dataset                         #
+
+#################################################################################
+
+
+
+#################################################################################
+
+#                   unpaired, using adversarial or MMD loss                     #
+
+#################################################################################
+
+# a simple mlp
+class discriminator(nn.Module):
+    def __init__(self, infeatures = 2, hidden1 = 64, hidden2 = 16, hidden3 = 2):
+        super(discriminator, self).__init__()
+        self.lin1 = nn.Linear(infeatures, hidden1)
+        self.lin2 = nn.Linear(hidden1, hidden2)
+        self.lin3 = nn.Linear(hidden2, hidden3)
+    
+    def forward(self, latent_rep):
+        x = F.relu(self.lin1(latent_rep))
+        x = F.relu(self.lin2(x))
+        # calculate along dimension 1, (0 is batches)
+        x = F.softmax(self.lin3(x), dim = 1)
+        return x
+        
+
+# autoencoder for unpaired dataset
+class AE_unpaired(nn.Module):
+    def __init__(self, cfg_rna, cfg_atac):
+        super(AutoEncoder, self).__init__()
+        self.atac_encoder = Encoder(cfg_atac)
+        self.rna_encoder = Encoder(cfg_rna)
+        
+        self.atac_decoder = Decoder(cfg_atac)
+        self.rna_decoder = Decoder(cfg_rna)
+
+    def forward(self, atac, rna):
+        # encode
+        latent_atac = self.atac_encoder(atac)
+        latent_rna = self.rna_encoder(rna)
+
+        # decode
+        return self.atac_decoder(latent_atac), self.rna_decoder(latent_rna), latent_atac, latent_rna
+
+
+
+
+#################################################################################
+
+#                             Paired, using Fusion network                      #
+
+#################################################################################
+
+
 class oldAutoEncoder(nn.Module):
     def __init__(self, cfg_rna, cfg_atac):
         super(oldAutoEncoder, self).__init__()

@@ -154,7 +154,7 @@ class AE_unpaired(nn.Module):
         latent_rna = self.rna_encoder(rna)
 
         # decode
-        return self.atac_decoder(latent_atac), self.rna_decoder(latent_rna), latent_atac, latent_rna
+        return self.rna_decoder(latent_rna), self.atac_decoder(latent_atac), latent_rna, latent_atac
 
 
 

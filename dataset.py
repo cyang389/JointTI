@@ -99,6 +99,66 @@ class scDataset(Dataset):
         
         return sample
 
+class hhRNADataset(Dataset):
+
+    def __init__(self, atac_seq_file = "./data/human_hematopoiesis/scATAC_tfscore.csv", rna_seq_file = "./data/human_hematopoiesis/scRNA.csv",
+     atac_celltype_file = "./data/human_hematopoiesis/scATAC_celltype.txt", rna_celltype_file = "./data/human_hematopoiesis/scRNA_celltype.txt", dim_reduction = False):
+        self.expr_RNA = pd.read_csv(rna_seq_file, index_col=0).to_numpy()[::5,:]
+        self.cell_type_RNA = []
+        with open(rna_celltype_file, "r") as fp:
+            for i in fp:
+                self.cell_type_RNA.append(i.strip("\n"))
+        self.cell_type_RNA = np.array(self.cell_type_RNA)[::5]
+        
+        if dim_reduction:
+            self.expr_RNA = StandardScaler().fit_transform(self.expr_RNA)
+            self.expr_RNA = PCA(n_components=100).fit_transform(self.expr_RNA)
+
+        # self.transform = transform
+        self.expr_RNA = torch.FloatTensor(self.expr_RNA)
+        
+    def __len__(self):
+        # number of cells
+        return len(self.expr_RNA)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        
+        # index denote the index of the cell
+        sample = {'RNA':self.expr_RNA[idx,:], 'index':idx, 'cell_type': self.cell_type_RNA[idx]}
+        
+        return sample
+
+class hhATACDataset(Dataset):
+
+    def __init__(self, atac_seq_file = "./data/human_hematopoiesis/scATAC_tfscore.csv", rna_seq_file = "./data/human_hematopoiesis/scRNA.csv",
+     atac_celltype_file = "./data/human_hematopoiesis/scATAC_celltype.txt", rna_celltype_file = "./data/human_hematopoiesis/rna_celltype.txt", dim_reduction = False):
+        self.expr_ATAC = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
+        self.cell_type_ATAC = []
+        with open(atac_celltype_file, "r") as fp:
+            for i in fp:
+                self.cell_type_ATAC.append(i.strip("\n"))
+        self.cell_type_ATAC = np.array(self.cell_type_ATAC)
+        
+        if dim_reduction:
+            self.expr_ATAC = latent_semantic_indexing(self.expr_ATAC, k=100)
+
+        self.expr_ATAC = torch.FloatTensor(self.expr_ATAC)
+        
+    def __len__(self):
+        # number of cells
+        return len(self.expr_ATAC)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        
+        # index denote the index of the cell
+        sample = {'ATAC': self.expr_ATAC[idx,:], 'index':idx, 'cell_type': self.cell_type_ATAC[idx]}
+        
+        return sample
+
     
 class test_s_curve(Dataset):
     
@@ -193,3 +253,23 @@ def graphdata(path, k, diff = "dpt"):
 
 
     return {"X": X, "adj": adj_diff, "edge_index": edge_index_diff, "similarity": sim_matrix}
+
+
+class test_paul(Dataset):
+    
+    def __init__(self, file_path = "./data/Paul/Paul_processed_expr.csv"):
+        self.expr_RNA = torch.FloatTensor(pd.read_csv(file_path, index_col=0).values)
+        
+        
+    def __len__(self):
+        # number of cells
+        return len(self.expr_RNA)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        
+        # index denote the index of the cell
+        sample = {'RNA':self.expr_RNA[idx,:], 'index':idx}
+        
+        return sample

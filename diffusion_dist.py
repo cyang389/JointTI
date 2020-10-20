@@ -114,12 +114,19 @@ def phate_similarity(data, n_neigh = 5, t = 5, use_potential = True):
 
 
 
-def DPT_similarity(data, n_neigh = 5):
+def DPT_similarity(data, n_neigh = 5, log_trans = False):
     '''Calculates DPT between all points in the data, directly ouput similarity matrix, which is the diffusion pseudotime matrix, a little better than diffusion map
     Parameters:
-        data: feature matrix, numpy.array of the size [n_samples, n_features]
+    -----------
+        data: 
+            feature matrix, numpy.array of the size [n_samples, n_features]
+        n_neigh: 
+            larger correspond to slower decay
+        log_trans:
+            expand shorter cell and compress distant cell
     
     Returns:
+    -----------
         DPT: similarity matrix calculated from diffusion pseudo-time
     '''
     import graphtools as gt
@@ -137,13 +144,14 @@ def DPT_similarity(data, n_neigh = 5):
     # Calculate M
     I = np.eye(T_tilde.shape[1])
     M = np.linalg.inv(I - T_tilde) - I
-    M = np.real(M)
-
-    eigenValues, eigenVectors = eigh(M)
-    idx = eigenValues.argsort()[::-1]
-    eigenValues = eigenValues[idx]
-    eigenVectors = eigenVectors[:,idx]
+    M = np.real(M)    
+#     eigenValues, eigenVectors = eigh(M)
+#     idx = eigenValues.argsort()[::-1]
+#     eigenValues = eigenValues[idx]
+#     eigenVectors = eigenVectors[:,idx]
     
     DPT = squareform(pdist(M))
+    if log_trans:
+        DPT = np.log1p(DPT)
     
     return DPT

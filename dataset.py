@@ -1,156 +1,59 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-from sklearn.preprocessing import StandardScaler
+
 import numpy as np
-from scipy.linalg import svd
 import pandas as pd 
+from scipy.sparse import csr_matrix
+
+from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-# from torch_geometric.data import InMemoryDataset, Data
+from sklearn import datasets
 from sklearn.neighbors import kneighbors_graph
+
 from utils import *
 import anndata
-from scipy.sparse import csr_matrix
-import scvelo as scv
 import scanpy as sc
-import anndata
 
-from sklearn import manifold, datasets
-
-def lsi_ATAC(X, k = 100, use_first = False):
-    """\
-        Compute LSI with TF-IDF transform, i.e. SVD on document matrix, can do tsne on the reduced dimension
-
-        Parameters:
-            X: cell by feature(region) count matrix
-            k: number of latent dimensions
-            use_first: since we know that the first LSI dimension is related to sequencing depth, we just ignore the first dimension since, and only pass the 2nd dimension and onwards for t-SNE
-        Returns:
-            latent: cell latent matrix
-    """    
-    from sklearn.feature_extraction.text import TfidfTransformer
-    from sklearn.decomposition import TruncatedSVD
-
-    # binarize the scATAC-Seq count matrix
-    bin_X = np.where(X < 1, 0, 1)
-    
-    # perform Latent Semantic Indexing Analysis
-    # get TF-IDF matrix
-    tfidf = TfidfTransformer(norm='l2', sublinear_tf=True)
-    normed_count = tfidf.fit_transform(bin_X)
-
-    # perform SVD on the sparse matrix
-    lsi = TruncatedSVD(n_components = k, random_state=42)
-    lsi_r = lsi.fit_transform(normed_count)
-    
-    # use the first component or not
-    if use_first:
-        return lsi_r
-    else:
-        return lsi_r[:, 1:]
-
-def tsne_ATAC(X):
-    """\
-        Compute tsne
-
-        Parameters:
-            X: cell by feature(region) count matrix
-        Returns:
-            tsne: reduce-dimension matrix
-    """       
-    X_lsi = lsi_ATAC(X, k = 50, use_first = False)
-    tsne = manifold.TSNE(n_components=2,
-            learning_rate=200,
-            early_exaggeration=20,
-            n_iter=2000,
-            random_state=42,
-            init='pca',
-            verbose=1).fit_transform(X_lsi)
-
-    # return first two dimensions for visualization
-    return tsne[:,:2]
-    
 
 class symsim_batches(Dataset):
-    def __init__(self, path = "./data/Symsim/", rand_num = 1, batch_num = 1):
-        count = pd.read_csv(path + "rand" + str(rand_num) + "/counts.txt", sep = "\t", header = None).values
-        self.cell_labels = pd.read_csv(path + "rand" + str(rand_num) + "/cell_labels.txt", sep = "\t")
+    def __init__(self, rand_num = 1, batch_num = 1):
+        """\
+        Symsim dataset
+
+        Parameters
+        ------------
+        rand_num
+            dataset number, from 1 to 5
+        batch_num
+            batch number, from 1 to 2
+        """
+        path = "./data/Symsim/"
+
+        # n_obs by n_features
+        count = pd.read_csv(path + "rand" + str(rand_num) + "/counts.txt", sep = "\t", header = None).values.T
+        cell_labels = pd.read_csv(path + "rand" + str(rand_num) + "/cell_labels.txt", sep = "\t")
         
-        adata = anndata.AnnData(X = count.T, obs = cell_labels)
+        adata = anndata.AnnData(X = count)
         sc.pp.normalize_per_cell(adata)
         sc.pp.log1p(adata)
 
-        batch_idx = self.cell_labels.loc[self.cell_labels["batch"] == batch_num].index.values
+        # get the index from batch-selection
+        batch_idx = cell_labels.loc[cell_labels["batch"] == batch_num].index.values
         
         # get processed count matrix 
-        self.X = torch.FloatTensor(adata.X)
+        self.expr = count[batch_idx,:]
+        self.cell_labels = cell_labels.iloc[batch_idx,:]
+
+        # get batch number 
+        self.batch_num = batch_num
         
     
     def __len__(self):
-        return self.X.shape[0]
+        return self.expr.shape[0]
     
     def __getitem__(self, idx):
-        sample = {"data": self.X[idx,:], "label": self.cell_labels.iloc[idx,:], "batch"}
-        
-    
-class scDataset_500(Dataset):
+        sample = {"data": self.expr[idx,:], "label": self.cell_labels.iloc[idx,:], "batch": self.batch_num}
 
-    def __init__(self, atac_seq_file = "./data/expr_rna_500.csv", rna_seq_file = "./data/expr_rna_500.csv", dim_reduction = False):
-        self.expr_ATAC = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
-        self.expr_RNA = pd.read_csv(rna_seq_file, index_col=0).to_numpy()
-        
-        if dim_reduction:
-            self.expr_RNA = StandardScaler().fit_transform(self.expr_RNA)
-            self.expr_RNA = PCA(n_components=100).fit_transform(self.expr_RNA)
-            self.expr_ATAC = latent_semantic_indexing(self.expr_ATAC, k=100)
-
-        # self.transform = transform
-        self.expr_ATAC *= 10
-        self.expr_RNA *= 10
-        self.expr_ATAC = torch.FloatTensor(self.expr_ATAC)
-        self.expr_RNA = torch.FloatTensor(self.expr_RNA)
-
-        
-    def __len__(self):
-        # number of cells
-        return len(self.expr_RNA)
-
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-        
-        # index denote the index of the cell
-        sample = {'ATAC': self.expr_ATAC[idx,:], 'RNA':self.expr_RNA[idx,:], 'index':idx}
-        
-        return sample
-
-class scDataset(Dataset):
-
-    def __init__(self, atac_seq_file = "./data/expr_atac_processed.csv", rna_seq_file = "./data/expr_rna_processed.csv", dim_reduction = False):
-        self.expr_ATAC = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
-        self.expr_RNA = pd.read_csv(rna_seq_file, index_col=0).to_numpy()
-        
-        if dim_reduction:
-            self.expr_RNA = StandardScaler().fit_transform(self.expr_RNA)
-            self.expr_RNA = PCA(n_components=100).fit_transform(self.expr_RNA)
-            self.expr_ATAC = latent_semantic_indexing(self.expr_ATAC, k=100)
-
-        # self.transform = transform
-        self.expr_ATAC = torch.FloatTensor(self.expr_ATAC)
-        self.expr_RNA = torch.FloatTensor(self.expr_RNA)
-
-        
-    def __len__(self):
-        # number of cells
-        return len(self.expr_ATAC)
-
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-        
-        # index denote the index of the cell
-        sample = {'ATAC': self.expr_ATAC[idx,:], 'RNA':self.expr_RNA[idx,:], 'index':idx}
-        
-        return sample
 
 class hhRNADataset(Dataset):
 
@@ -235,6 +138,26 @@ class test_s_curve(Dataset):
         
         return sample
 
+class test_paul(Dataset):
+    
+    def __init__(self, file_path = "./data/Paul/Paul_processed_expr.csv"):
+        self.expr_RNA = torch.FloatTensor(pd.read_csv(file_path, index_col=0).values)
+        
+        
+    def __len__(self):
+        # number of cells
+        return len(self.expr_RNA)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        
+        # index denote the index of the cell
+        sample = {'RNA':self.expr_RNA[idx,:], 'index':idx}
+        
+        return sample
+
+"""
 class testDataset(Dataset):
 
     def __init__(self):
@@ -281,7 +204,6 @@ class testCurveDataset(Dataset):
         
         return sample
 
-
 def graphdata(path, k, diff = "dpt"):
     data = pd.read_csv(path, index_col = 0).to_numpy()
     data_pca = pca(data, n = 30)
@@ -307,12 +229,24 @@ def graphdata(path, k, diff = "dpt"):
 
     return {"X": X, "adj": adj_diff, "edge_index": edge_index_diff, "similarity": sim_matrix}
 
-
-class test_paul(Dataset):
     
-    def __init__(self, file_path = "./data/Paul/Paul_processed_expr.csv"):
-        self.expr_RNA = torch.FloatTensor(pd.read_csv(file_path, index_col=0).values)
+class scDataset_500(Dataset):
+
+    def __init__(self, atac_seq_file = "./data/expr_rna_500.csv", rna_seq_file = "./data/expr_rna_500.csv", dim_reduction = False):
+        self.expr_ATAC = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
+        self.expr_RNA = pd.read_csv(rna_seq_file, index_col=0).to_numpy()
         
+        if dim_reduction:
+            self.expr_RNA = StandardScaler().fit_transform(self.expr_RNA)
+            self.expr_RNA = PCA(n_components=100).fit_transform(self.expr_RNA)
+            self.expr_ATAC = lsi_ATAC(self.expr_ATAC, k=100)
+
+        # self.transform = transform
+        self.expr_ATAC *= 10
+        self.expr_RNA *= 10
+        self.expr_ATAC = torch.FloatTensor(self.expr_ATAC)
+        self.expr_RNA = torch.FloatTensor(self.expr_RNA)
+
         
     def __len__(self):
         # number of cells
@@ -323,6 +257,37 @@ class test_paul(Dataset):
             idx = idx.tolist()
         
         # index denote the index of the cell
-        sample = {'RNA':self.expr_RNA[idx,:], 'index':idx}
+        sample = {'ATAC': self.expr_ATAC[idx,:], 'RNA':self.expr_RNA[idx,:], 'index':idx}
         
         return sample
+
+class scDataset(Dataset):
+
+    def __init__(self, atac_seq_file = "./data/expr_atac_processed.csv", rna_seq_file = "./data/expr_rna_processed.csv", dim_reduction = False):
+        self.expr_ATAC = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
+        self.expr_RNA = pd.read_csv(rna_seq_file, index_col=0).to_numpy()
+        
+        if dim_reduction:
+            self.expr_RNA = StandardScaler().fit_transform(self.expr_RNA)
+            self.expr_RNA = PCA(n_components=100).fit_transform(self.expr_RNA)
+            self.expr_ATAC = lsi_ATAC(self.expr_ATAC, k=100)
+
+        # self.transform = transform
+        self.expr_ATAC = torch.FloatTensor(self.expr_ATAC)
+        self.expr_RNA = torch.FloatTensor(self.expr_RNA)
+
+        
+    def __len__(self):
+        # number of cells
+        return len(self.expr_ATAC)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        
+        # index denote the index of the cell
+        sample = {'ATAC': self.expr_ATAC[idx,:], 'RNA':self.expr_RNA[idx,:], 'index':idx}
+        
+        return sample
+
+"""

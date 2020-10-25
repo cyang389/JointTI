@@ -5,7 +5,6 @@ import numpy as np
 from scipy.linalg import svd
 import pandas as pd 
 from sklearn.decomposition import PCA
-# from torch_geometric.data import InMemoryDataset, Data
 from sklearn.neighbors import kneighbors_graph
 import diffusion_dist as diff
 

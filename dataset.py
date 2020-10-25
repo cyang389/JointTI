@@ -56,6 +56,52 @@ class symsim_batches(Dataset):
         sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num}
         return sample
 
+class cardiacRNADataset(Dataset):
+    def __init__(self):
+        path = "data/cardiac_progenitor/scRNA/"
+        # sample by feature matrix
+        self.expr = pd.read_csv(path + "isl1_processed_count.csv", sep = ",").values
+        cell_labels = pd.read_csv(path + "isl1.column.cells.csv", sep = ",")
+        self.dpt = cell_labels["dpt"]
+        self.cluster = cell_labels["cluster"]
+
+        self.expr = torch.FloatTensor(self.expr)
+    
+    def __len__(self):
+        return self.expr.shape[0]
+    
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        sample = {"count": self.expr[idx, :], "index": idx}
+        return sample
+
+class cardiacATACDataset(Dataset):
+    def __init__(self):
+        path = "data/cardiac_progenitor/scATAC/"
+        # sample by feature matrix
+        X = pd.read_csv(path + "binary_expr.csv", sep = ",").values
+
+        cell_labels = pd.read_csv(path + "column.cells.csv", sep = ",")
+        self.dpt = cell_labels[["dpt_cardiac", "dpt_endo"]]
+        self.cluster = cell_labels[".cluster_5"]
+
+        # lsi
+        self.expr = lsi_ATAC(X, k = 300, use_first = False)
+
+        self.expr = torch.FloatTensor(self.expr)
+
+    def __len__(self):
+        return self.expr.shape[0]
+    
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        sample = {"count": self.expr[idx, :], "index": idx}
+        return sample   
+
 
 class hhRNADataset(Dataset):
 

@@ -41,7 +41,7 @@ class symsim_batches(Dataset):
         batch_idx = cell_labels.loc[cell_labels["batch"] == batch_num].index.values
         
         # get processed count matrix 
-        self.expr = count[batch_idx,:]
+        self.expr = torch.FloatTensor(adata.X[batch_idx,:])
         self.cell_labels = cell_labels.iloc[batch_idx,:]
 
         # get batch number 
@@ -52,7 +52,9 @@ class symsim_batches(Dataset):
         return self.expr.shape[0]
     
     def __getitem__(self, idx):
-        sample = {"data": self.expr[idx,:], "label": self.cell_labels.iloc[idx,:], "batch": self.batch_num}
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num}
+        return sample
 
 
 class hhRNADataset(Dataset):
@@ -82,7 +84,7 @@ class hhRNADataset(Dataset):
             idx = idx.tolist()
         
         # index denote the index of the cell
-        sample = {'RNA':self.expr_RNA[idx,:], 'index':idx, 'cell_type': self.cell_type_RNA[idx]}
+        sample = {'count':self.expr_RNA[idx,:], 'index':idx, 'cell_type': self.cell_type_RNA[idx]}
         
         return sample
 
@@ -111,7 +113,7 @@ class hhATACDataset(Dataset):
             idx = idx.tolist()
         
         # index denote the index of the cell
-        sample = {'ATAC': self.expr_ATAC[idx,:], 'index':idx, 'cell_type': self.cell_type_ATAC[idx]}
+        sample = {'count': self.expr_ATAC[idx,:], 'index':idx, 'cell_type': self.cell_type_ATAC[idx]}
         
         return sample
 
@@ -134,7 +136,7 @@ class test_s_curve(Dataset):
             idx = idx.tolist()
         
         # index denote the index of the cell
-        sample = {'RNA':self.expr_RNA[idx,:], 'index':idx, 'time': self.time[idx]}
+        sample = {'count':self.expr_RNA[idx,:], 'index':idx, 'time': self.time[idx]}
         
         return sample
 
@@ -153,7 +155,7 @@ class test_paul(Dataset):
             idx = idx.tolist()
         
         # index denote the index of the cell
-        sample = {'RNA':self.expr_RNA[idx,:], 'index':idx}
+        sample = {'count':self.expr_RNA[idx,:], 'index':idx}
         
         return sample
 

@@ -10,17 +10,40 @@ import diffusion_dist as diff
 
 from sklearn import manifold
 
+def pairwise_distance(x):
+    """\
+    Description:
+    -----------
+        Pytorch implementation of pairwise distance, similar to squareform(pdist(x))
+        
+    Parameters:
+    -----------
+        x: sample by feature matrix
+    Returns:
+    -----------
+        dist: sample by sample pairwise distance
+    """
+    x_norm = (x**2).sum(1).view(-1, 1)
+    y_norm = x_norm.view(1, -1)
+    dist = x_norm + y_norm - 2.0 * torch.mm(x, torch.transpose(x, 0, 1))
+    dist = torch.sqrt(dist + 1e-2)
+    return dist 
 
 def lsi_ATAC(X, k = 100, use_first = False):
     """\
+    Description:
+    ------------
         Compute LSI with TF-IDF transform, i.e. SVD on document matrix, can do tsne on the reduced dimension
 
-        Parameters:
-            X: cell by feature(region) count matrix
-            k: number of latent dimensions
-            use_first: since we know that the first LSI dimension is related to sequencing depth, we just ignore the first dimension since, and only pass the 2nd dimension and onwards for t-SNE
-        Returns:
-            latent: cell latent matrix
+    Parameters:
+    ------------
+        X: cell by feature(region) count matrix
+        k: number of latent dimensions
+        use_first: since we know that the first LSI dimension is related to sequencing depth, we just ignore the first dimension since, and only pass the 2nd dimension and onwards for t-SNE
+    
+    Returns:
+    -----------
+        latent: cell latent matrix
     """    
     from sklearn.feature_extraction.text import TfidfTransformer
     from sklearn.decomposition import TruncatedSVD
@@ -45,12 +68,17 @@ def lsi_ATAC(X, k = 100, use_first = False):
 
 def tsne_ATAC(X):
     """\
+    Description:
+    ------------    
         Compute tsne
 
-        Parameters:
-            X: cell by feature(region) count matrix
-        Returns:
-            tsne: reduce-dimension matrix
+    Parameters:
+    ------------
+        X: cell by feature(region) count matrix
+    
+    Returns:
+    -----------
+        tsne: reduce-dimension matrix
     """       
     X_lsi = lsi_ATAC(X, k = 50, use_first = False)
     tsne = manifold.TSNE(n_components=2,
@@ -64,18 +92,3 @@ def tsne_ATAC(X):
     # return first two dimensions for visualization
     return tsne[:,:2]
     
-
-def pca(data, n):
-    p = PCA(n_components=n)
-    return p.fit_transform(data)
-
-def diff_map_dist(data, n_eign = 10, alpha = 100, diffusion_time = 5):
-    diffu_atac = diff.diffusion_map(data, n_eign = 10, alpha = 100, diffusion_time = 5)
-    diff_sim_atac = diff.diffusion_similarity(diffu_atac)
-    return diff_sim_atac
-
-def normalize(data):
-    return data / np.linalg.norm(data)
-
-def dpt_dist(data):
-    return diff.DPT_similarity(data)

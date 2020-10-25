@@ -1,95 +1,34 @@
 import numpy as np
 import random
 import pandas as pd
-from sklearn.metrics.pairwise import euclidean_distances
-from scipy.linalg import eigh
 import warnings
 import scipy
 
 warnings.filterwarnings('ignore')
 
-'''
-def find_diffusion_matrix(X=None, alpha=0.15):
-    """Function to find the diffusion matrix P
-        
-        >Parameters:
-        alpha - to be used for gaussian kernel function
-        X - feature matrix as numpy array
-        
-        >Returns:
-        P_prime, P, Di, K, D_left
-    """
-    alpha = alpha
-        
-    dists = euclidean_distances(X, X)
-    K = np.exp(-dists**2 / alpha)
-    
-    r = np.sum(K, axis=0)
-    Di = np.diag(1/r)
-    P = np.matmul(Di, K)
-    
-    D_right = np.diag((r)**0.5)
-    D_left = np.diag((r)**-0.5)
-    P_prime = np.matmul(D_right, np.matmul(P,D_left))
-
-    return P_prime, P, Di, K, D_left
-
-
-def find_diffusion_map(P_prime, D_left, n_eign = None):
-    """Function to find the diffusion coordinates in the diffusion space
-        
-        >Parameters:
-        P_prime - Symmetrized version of Diffusion Matrix P
-        D_left - D^{-1/2} matrix
-        n_eigen - Number of eigen vectors to return. This is effectively 
-                    the dimensions to keep in diffusion space.
-        
-        >Returns:
-        Diffusion_map as np.array object
-    """   
-    
-    eigenValues, eigenVectors = eigh(P_prime)
-    idx = eigenValues.argsort()[::-1]
-    eigenValues = eigenValues[idx]
-    eigenVectors = eigenVectors[:,idx]
-    
-    diffusion_coordinates = np.matmul(D_left, eigenVectors)
-    
-    if n_eign == None:
-        return diffusion_coordinates
-    else:
-        return diffusion_coordinates[:,:n_eign]
-
-def diffusion_map(X, n_eign = None, alpha = 0.009, diffusion_time = 5):
-    P_prime, P, Di, K, D_left = find_diffusion_matrix(X, alpha = alpha)
-    P_prime = np.linalg.matrix_power(P_prime, n = diffusion_time)
-    P_prime = np.log1p(P_prime)
-    return find_diffusion_map(P_prime, D_left, n_eign = n_eign)    
-
-def diffusion_similarity(diff_map):
-    dists = euclidean_distances(diff_map, diff_map)
-    return dists
-
-'''
-
 
 
 def phate_similarity(data, n_neigh = 5, t = 5, use_potential = True):
     """\
-    Calculate diffusion distance using Phate/Diffusion Map method
+    Description:
+    ------------
+        Calculate diffusion distance using Phate/Diffusion Map method
     
     Parameters:
     ------------
-    data: 
-        Feature matrix of dimension (n_samples, n_features)
-    n_neigh:
-        The number of neighbor in knn for graph construction
-    t:
-        The transition timestep t
-    use_potential:
-        Using potential distance or not, if use, the same as Phate; if not, the same as diffusion map
-    
-    
+        data: 
+            Feature matrix of dimension (n_samples, n_features)
+        n_neigh:
+            The number of neighbor in knn for graph construction
+        t:
+            The transition timestep t
+        use_potential:
+            Using potential distance or not, if use, the same as Phate; if not, the same as diffusion map
+
+    Returns:
+    -----------    
+        dist:
+            Similarity matrix
     """
     import graphtools as gt
     from scipy.spatial.distance import pdist, squareform
@@ -114,20 +53,25 @@ def phate_similarity(data, n_neigh = 5, t = 5, use_potential = True):
 
 
 
-def DPT_similarity(data, n_neigh = 5, log_trans = False):
-    '''Calculates DPT between all points in the data, directly ouput similarity matrix, which is the diffusion pseudotime matrix, a little better than diffusion map
+def DPT_similarity(data, n_neigh = 5, use_potential = False):
+    '''\
+    Description:
+    -----------
+        Calculates DPT between all points in the data, directly ouput similarity matrix, which is the diffusion pseudotime matrix, a little better than diffusion map
+        
     Parameters:
     -----------
         data: 
-            feature matrix, numpy.array of the size [n_samples, n_features]
+            Feature matrix, numpy.array of the size [n_samples, n_features]
         n_neigh: 
-            larger correspond to slower decay
-        log_trans:
-            expand shorter cell and compress distant cell
+            Larger correspond to slower decay
+        use_potential:
+            Expand shorter cell and compress distant cell
     
     Returns:
     -----------
-        DPT: similarity matrix calculated from diffusion pseudo-time
+        DPT: 
+            Similarity matrix calculated from diffusion pseudo-time
     '''
     import graphtools as gt
     from scipy.spatial.distance import pdist, squareform
@@ -145,13 +89,15 @@ def DPT_similarity(data, n_neigh = 5, log_trans = False):
     I = np.eye(T_tilde.shape[1])
     M = np.linalg.inv(I - T_tilde) - I
     M = np.real(M)    
-#     eigenValues, eigenVectors = eigh(M)
-#     idx = eigenValues.argsort()[::-1]
-#     eigenValues = eigenValues[idx]
-#     eigenVectors = eigenVectors[:,idx]
-    
+
+    # log-potential
+    if use_potential:
+        M = M - np.min(M, axis = 1)[:,None]
+        M = M / np.sum(M, axis = 1)[:,None]
+        M = -np.log(M + 1e-7)
+        
     DPT = squareform(pdist(M))
-    if log_trans:
-        DPT = np.log1p(DPT)
+
     
     return DPT
+

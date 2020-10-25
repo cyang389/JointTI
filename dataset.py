@@ -60,10 +60,10 @@ class cardiacRNADataset(Dataset):
     def __init__(self):
         path = "data/cardiac_progenitor/scRNA/"
         # sample by feature matrix
-        self.expr = pd.read_csv(path + "isl1_processed_count.csv", sep = ",").values
-        cell_labels = pd.read_csv(path + "isl1.column.cells.csv", sep = ",")
-        self.dpt = cell_labels["dpt"]
-        self.cluster = cell_labels["cluster"]
+        self.expr = pd.read_csv(path + "isl1_processed_count.csv", sep = ",", index_col = 0).values
+        self.cell_labels = pd.read_csv(path + "isl1.column.cells.csv", sep = ",", index_col=0)
+        self.dpt = self.cell_labels["dpt"]
+        self.cluster = self.cell_labels["cluster"]
 
         self.expr = torch.FloatTensor(self.expr)
     

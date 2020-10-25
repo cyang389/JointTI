@@ -81,14 +81,14 @@ class cardiacATACDataset(Dataset):
     def __init__(self):
         path = "data/cardiac_progenitor/scATAC/"
         # sample by feature matrix
-        X = pd.read_csv(path + "binary_expr.csv", sep = ",").values
+        X = pd.read_csv(path + "binary_expr.csv", sep = ",").values.T
 
         cell_labels = pd.read_csv(path + "column.cells.csv", sep = ",")
         self.dpt = cell_labels[["dpt_cardiac", "dpt_endo"]]
         self.cluster = cell_labels[".cluster_5"]
 
         # lsi
-        self.expr = lsi_ATAC(X, k = 300, use_first = False)
+        self.expr = lsi_ATAC(X, k = 301, use_first = False)
 
         self.expr = torch.FloatTensor(self.expr)
 

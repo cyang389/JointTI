@@ -8,6 +8,7 @@ CONFIG = {
     'layers': [512, 256, 128, 2], # number of nodes in each layer of encoder and decoder.
     'minibatch_size': 256,
     'use_batchnorm': True, # use batch normalization layer.
+    'use_tanh': False,
 #     'max_iterations': 1000, # max iteration steps
 #     'log_interval': 100, # interval of steps to display loss information.
 #     'use_gpu': False, 
@@ -52,6 +53,9 @@ class Encoder(nn.Module):
             x = self.lrelu_2(self.hidden_layer2(x))
             x = self.lrelu_3(self.hidden_layer3(x))
             embed = self.hidden_layer4(x)
+        
+        if self.cfg['use_tanh']:
+            embed = F.tanh(embed)
             
         return embed
 

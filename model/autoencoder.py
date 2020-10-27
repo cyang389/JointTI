@@ -128,7 +128,7 @@ class Fusion(nn.Module):
 
 # a simple mlp
 class discriminator(nn.Module):
-    def __init__(self, infeatures = 2, hidden1 = 64, hidden2 = 16, hidden3 = 2):
+    def __init__(self, infeatures = 2, hidden1 = 32, hidden2 = 16, hidden3 = 1):
         super(discriminator, self).__init__()
         self.lin1 = nn.Linear(infeatures, hidden1)
         self.lin2 = nn.Linear(hidden1, hidden2)
@@ -137,8 +137,7 @@ class discriminator(nn.Module):
     def forward(self, latent_rep):
         x = F.relu(self.lin1(latent_rep))
         x = F.relu(self.lin2(x))
-        # calculate along dimension 1, (0 is batches)
-        x = F.softmax(self.lin3(x), dim = 1)
+        x = F.sigmoid(self.lin3(x))
         return x
         
 

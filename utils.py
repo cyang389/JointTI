@@ -10,6 +10,7 @@ import diffusion_dist as diff
 
 from sklearn import manifold
 
+'''
 def pairwise_distance(x):
     """\
     Description:
@@ -28,6 +29,7 @@ def pairwise_distance(x):
     dist = x_norm + y_norm - 2.0 * torch.mm(x, torch.transpose(x, 0, 1))
     dist = torch.sqrt(dist + 1e-2)
     return dist 
+'''
 
 def lsi_ATAC(X, k = 100, use_first = False):
     """\

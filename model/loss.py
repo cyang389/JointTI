@@ -3,15 +3,86 @@ import torch.nn.functional as F
 
 
 def pairwise_distance(x):
+    """\
+    Description:
+    -----------
+        Pytorch implementation of pairwise distance, similar to squareform(pdist(x))
+        
+    Parameters:
+    -----------
+        x: sample by feature matrix
+    Returns:
+    -----------
+        dist: sample by sample pairwise distance
+    """
     x_norm = (x**2).sum(1).view(-1, 1)
     y_norm = x_norm.view(1, -1)
     dist = x_norm + y_norm - 2.0 * torch.mm(x, torch.transpose(x, 0, 1))
-    
-    # # nan for approx 0 distance
-    # dist = torch.sqrt(dist)
+    dist = torch.sqrt(dist + 1e-2)
     return dist 
 
 
+def traj_loss(recon_x, x, z, diff_sim, lamb_recon = 1, lamb_dist = 1, recon_mode = "original"):
+    """\
+    Description:
+    ------------
+        Loss for latent space learning that preserve the trajectory structure. Include reconstruction(relative) loss and distance preservation loss.
+    
+    Parameters:
+    ------------
+    recon_x:
+        Reconstructed feature matrix, of the size (batch_size, n_features)
+    x:
+        Original input, of the size (batch_size, n_features)
+    z:
+        Learned latent space, of the size (batch_size, 2)
+    diff_sim:
+        Diffusion distance calculated on original dataset, ground truth, of the size (batch_size, batch_size)
+    lamb_recon:
+        Regularization coefficient for reconstruction loss
+    lamb_dis
+        Regularization coefficient for distance preservation loss
+    recon_mode:
+        Reconstruction mode, of two mode, "original" calculuates the original mse loss, "relative" calculates the mse loss of normalized data.  
+    
+    Returns:
+    ------------
+    loss:
+        Total loss
+    loss_recon:
+        Reconstruction loss
+    loss_dist:
+        Distance preservation loss
+    """
+
+    if recon_mode == "original":
+        loss_recon = lamb_recon * F.mse_loss(recon_x, x)
+    elif recon_mode == "relative":
+        mean_recon = torch.mean(recon_x, dim = 0)
+        var_recon = torch.var(recon_x, dim = 0)
+        mean_x = torch.mean(x, dim = 0)
+        var_x = torch.var(x, dim = 0)
+        # relative loss
+        loss_recon = lamb_recon * F.mse_loss(torch.div(torch.add(x, -1.0 * mean_x), (torch.sqrt(var_x + 1e-12)+1e-12)), torch.div(torch.add(x, -1.0 * mean_recon), (torch.sqrt(var_recon + 1e-12)+1e-12)))
+    else:
+        raise ValueError("recon_mode can only be original or relative")
+
+    # cosine similarity loss
+    latent_sim = pairwise_distance(z)
+        
+    # normalize latent similarity matrix
+    latent_sim = latent_sim / torch.norm(latent_sim, p='fro')
+    diff_sim = diff_sim / torch.norm(diff_sim, p = 'fro')
+
+    # inner product loss, maximize, so add negative before, in addition, make sure those two values are normalized, with norm 1
+    loss_dist = - lamb_dist * torch.sum(diff_sim * latent_sim) 
+    
+
+    loss = loss_recon + loss_dist
+    return loss, loss_recon, loss_dist
+
+
+"""
 def gvae_loss(latent1, latent2, adj1, adj2, recon_adj1, recon_adj2, logvar_latent1, logvar_latent2, lamb_align, lamb_kl, dist_loss_type = "cosine"):
     
     # make squared
@@ -120,7 +191,6 @@ def aligned_gae_loss(latent1, latent2, adj1, adj2, recon_adj1, recon_adj2, lamb_
     
     loss = loss_align + lamb_sim * similarity_loss1 + lamb_sim * similarity_loss2 
     
-<<<<<<< HEAD
     return loss, loss_align, similarity_loss1,  similarity_loss2
 
 
@@ -169,6 +239,4 @@ def ae_loss(recon_x1, recon_x2, x1, x2, z, dist_x1, dist_x2, lamb, lamb_var, dis
     loss = loss_x1 + loss_x2 + loss_dist_x1 + loss_dist_x2
     return loss, loss_x1, loss_x2,  loss_dist_x1,  loss_dist_x2
 
-=======
-    return loss, loss_align, lamb_sim * similarity_loss1,  lamb_sim * similarity_loss2 
->>>>>>> gae
+"""

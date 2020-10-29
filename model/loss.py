@@ -50,7 +50,7 @@ def _gaussian_rbf(dist):
     return K
 
 
-def mmd_loss(z1, z2, labels):
+def mmd_loss(z1, z2):
     """\
     Description:
     ------------
@@ -91,6 +91,23 @@ def mmd_loss(z1, z2, labels):
 
     return loss
 
+def paired_loss(z1, z2):
+    """\
+    Description:
+    ------------
+        distribution loss for paired dataset, note that z1 and z2 should be paired 
+    Parameters:
+    ------------
+    z1:
+        Learned latent space, of the size (batch_size1, 2)
+    z2:
+        Learned latent space, of the size (batch_size1, 2)
+    Returns:
+    ------------
+    loss:
+        loss
+    """
+    return F.mse_loss(z2, z1)
 
 
 

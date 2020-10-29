@@ -22,6 +22,78 @@ def pairwise_distance(x):
     return dist 
 
 
+def _gaussian_rbf(dist):
+    """\
+    Description:
+    ------------
+        Given a pairwise-distance matrix, calculate the gaussian rbf kernel matrix(affinity matrix)
+    Paramters:
+    ------------
+    dist:
+        Pairwise-distance matrix, of the shape (n_batch, n_batch)
+    Returns:
+    -----------
+    K:
+        Kernel matrix of the shape (n_batch, n_batch)
+    """
+    # Multi-scale RBF kernel. (average of some bandwidths of gaussian kernels)
+    # This must be properly set for the scale of embedding space
+    sigmas = [1e-5, 1e-4, 1e-3, 1e-2]
+    # beta of the shape (4,1)
+    beta = 1. / (2. * torch.unsqueeze(torch.tensor(sigmas), 1))
+    # (4,1) * (1, cell*cell), s with the shape (4,cell * cell)
+    s = torch.matmul(beta, torch.reshape(dist, (1, -1)))
+    # torch.sum sum over dimension 0 (all betas) and make the dimension (1, cell * cell), 
+    # and reshape it to be (cell, cell) and divide by the beta length
+    # average over all beta actually
+    K = torch.reshape(torch.sum(torch.exp(-s), 0), dist.shape) / len(sigmas)
+    return K
+
+
+def mmd_loss(z1, z2, labels):
+    """\
+    Description:
+    ------------
+        Maximum Mean Discrepancy regularization, using gaussian rbf kernel function 
+        Reference [https://stats.stackexchange.com/questions/276497/maximum-mean-discrepancy-distance-distribution]
+    Parameters:
+    ------------
+    z1:
+        Learned latent space, of the size (batch_size1, 2)
+    z2:
+        Learned latent space, of the size (batch_size2, 2)
+    Returns:
+    ------------
+    loss:
+        mmd loss
+    """
+    embed = torch.cat([z1, z2], dim = 0)
+    e = embed / torch.mean(embed)
+    K = pairwise_distance(e)
+    K = K / torch.max(K)
+    K = _gaussian_rbf(K)
+    loss = 0
+
+    # z1  kernel matrix within z1 cells 
+    K1 = K[:z1.shape[0], :z1.shape[0]]
+    # z2 kernel matrix within z2 cells
+    K2 = K[z1.shape[0]:, z1.shape[0]:]
+    # z1 and z2, kernel matrix in between
+    K12 = K[:z1.shape[0], z1.shape[0]:]
+    
+    # estimate the expectation value empirically
+    var_within_z1 = torch.sum(K1) / (z1.shape[0]**2)
+    var_within_z2 = torch.sum(K2) / (z2.shape[0]**2)
+    loss = loss + var_within_z1 + var_within_z2
+
+    var_between_batches = torch.sum(K12) / (z1.shape[0] * z2.shape[0])
+    loss -= 2 * var_between_batches
+
+    return loss
+
+
+
+
 def traj_loss(recon_x, x, z, diff_sim, lamb_recon = 1, lamb_dist = 1, recon_mode = "original"):
     """\
     Description:

@@ -57,8 +57,13 @@ def gaussian_kernel_matrix(dist):
     # Multi-scale RBF kernel. (average of some bandwidths of gaussian kernels)
     # This must be properly set for the scale of embedding space
     sigmas = [1e-5, 1e-4, 1e-3, 1e-2]
+    # beta of the shape (4,1)
     beta = 1. / (2. * torch.unsqueeze(torch.tensor(sigmas), 1))
+    # (4,1) * (1, cell*cell), s with the shape (4,cell * cell)
     s = torch.matmul(beta, torch.reshape(dist, (1, -1)))
+    # torch.sum sum over dimension 0 (all betas) and make the dimension (1, cell * cell), 
+    # and reshape it to be (cell, cell) and divide by the beta length
+    # average over all beta actually
     return torch.reshape(torch.sum(torch.exp(-s), 0), dist.shape) / len(sigmas)
 
 def load_expression_table(DFs, cfg, **kwargs):

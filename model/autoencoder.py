@@ -144,7 +144,7 @@ class discriminator(nn.Module):
 # autoencoder for unpaired dataset
 class AE_unpaired(nn.Module):
     def __init__(self, cfg_rna, cfg_atac):
-        super(AutoEncoder, self).__init__()
+        super(AE_unpaired, self).__init__()
         self.atac_encoder = Encoder(cfg_atac)
         self.rna_encoder = Encoder(cfg_rna)
         

@@ -40,7 +40,7 @@ def _gaussian_rbf(dist):
     # This must be properly set for the scale of embedding space
     sigmas = [1e-5, 1e-4, 1e-3, 1e-2]
     # beta of the shape (4,1)
-    beta = 1. / (2. * torch.unsqueeze(torch.tensor(sigmas), 1))
+    beta = 1. / (2. * torch.unsqueeze(0.05 * torch.tensor(sigmas), 1))
     # (4,1) * (1, cell*cell), s with the shape (4,cell * cell)
     s = torch.matmul(beta, torch.reshape(dist, (1, -1)))
     # torch.sum sum over dimension 0 (all betas) and make the dimension (1, cell * cell), 

@@ -56,114 +56,86 @@ class symsim_batches(Dataset):
         sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num}
         return sample
 
-class cardiacRNADataset(Dataset):
-    def __init__(self):
-        path = "data/cardiac_progenitor/scRNA/"
-        # sample by feature matrix
-        self.expr = pd.read_csv(path + "isl1_processed_count.csv", sep = ",", index_col = 0).values
-        self.cell_labels = pd.read_csv(path + "isl1.column.cells.csv", sep = ",", index_col=0)
-        self.dpt = self.cell_labels["dpt"]
-        self.cluster = self.cell_labels["cluster"]
+class hhRNA1(Dataset):
+    def __init__(self, standardize = False, rna_seq_file = "./data/human_hematopoiesis/count_rna_1.csv", rna_celltype_file = "./data/human_hematopoiesis/celltypes_rna_1.txt"):
+        """\
+        Symsim dataset
 
-        self.expr = torch.FloatTensor(self.expr)
-    
-    def __len__(self):
-        return self.expr.shape[0]
-    
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
+        Parameters
+        ------------
+        rand_num
+            dataset number, from 1 to 5
+        batch_num
+            batch number, from 1 to 2
+        """
 
-        sample = {"count": self.expr[idx, :], "index": idx}
-        return sample
-
-class cardiacATACDataset(Dataset):
-    def __init__(self):
-        path = "data/cardiac_progenitor/scATAC/"
-        # sample by feature matrix
-        X = pd.read_csv(path + "binary_expr.csv", sep = ",").values.T
-
-        cell_labels = pd.read_csv(path + "column.cells.csv", sep = ",")
-        self.dpt = cell_labels[["dpt_cardiac", "dpt_endo"]]
-        self.cluster = cell_labels[".cluster_5"]
-
-        # lsi
-        self.expr = lsi_ATAC(X, k = 301, use_first = False)
-
-        self.expr = torch.FloatTensor(self.expr)
-
-    def __len__(self):
-        return self.expr.shape[0]
-    
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-
-        sample = {"count": self.expr[idx, :], "index": idx}
-        return sample   
-
-
-class hhRNADataset(Dataset):
-
-    def __init__(self, atac_seq_file = "./data/human_hematopoiesis/scATAC_tfscore.csv", rna_seq_file = "./data/human_hematopoiesis/scRNA.csv",
-     atac_celltype_file = "./data/human_hematopoiesis/scATAC_celltype.txt", rna_celltype_file = "./data/human_hematopoiesis/scRNA_celltype.txt", dim_reduction = False):
-        self.expr_RNA = pd.read_csv(rna_seq_file, index_col=0).to_numpy()[::5,:]
-        self.cell_type_RNA = []
+        count = pd.read_csv(rna_seq_file, index_col=0).to_numpy()
+        cell_labels = []
         with open(rna_celltype_file, "r") as fp:
             for i in fp:
-                self.cell_type_RNA.append(i.strip("\n"))
-        self.cell_type_RNA = np.array(self.cell_type_RNA)[::5]
-        
-        if dim_reduction:
-            self.expr_RNA = StandardScaler().fit_transform(self.expr_RNA)
-            self.expr_RNA = PCA(n_components=100).fit_transform(self.expr_RNA)
+                cell_labels.append(i.strip("\n"))
+        cell_labels = np.array(cell_labels)
 
-        # self.transform = transform
-        self.expr_RNA = torch.FloatTensor(self.expr_RNA)
+        self.raw = torch.FloatTensor(count)
+
+        if standardize:
+            count = StandardScaler().fit_transform(count)
+        
+        # get processed count matrix 
+        self.expr = torch.FloatTensor(count)
+        self.cell_labels = cell_labels
+
+        # get batch number 
+        self.batch_num = 1
         
     def __len__(self):
-        # number of cells
-        return len(self.expr_RNA)
-
+        return self.expr.shape[0]
+    
     def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-        
-        # index denote the index of the cell
-        sample = {'count':self.expr_RNA[idx,:], 'index':idx, 'cell_type': self.cell_type_RNA[idx]}
-        
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
         return sample
 
-class hhATACDataset(Dataset):
+class hhATAC1(Dataset):
+    def __init__(self, standardize = False, atac_seq_file = "./data/human_hematopoiesis/count_atac_1.csv", atac_celltype_file = "./data/human_hematopoiesis/celltypes_atac_1.txt"):
+        """\
+        Symsim dataset
 
-    def __init__(self, atac_seq_file = "./data/human_hematopoiesis/scATAC_tfscore.csv", rna_seq_file = "./data/human_hematopoiesis/scRNA.csv",
-     atac_celltype_file = "./data/human_hematopoiesis/scATAC_celltype.txt", rna_celltype_file = "./data/human_hematopoiesis/rna_celltype.txt", dim_reduction = False):
-        self.expr_ATAC = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
-        self.cell_type_ATAC = []
+        Parameters
+        ------------
+        rand_num
+            dataset number, from 1 to 5
+        batch_num
+            batch number, from 1 to 2
+        """
+
+        count = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
+        cell_labels = []
         with open(atac_celltype_file, "r") as fp:
             for i in fp:
-                self.cell_type_ATAC.append(i.strip("\n"))
-        self.cell_type_ATAC = np.array(self.cell_type_ATAC)
-        
-        if dim_reduction:
-            self.expr_ATAC = latent_semantic_indexing(self.expr_ATAC, k=100)
+                cell_labels.append(i.strip("\n"))
+        cell_labels = np.array(cell_labels)
 
-        self.expr_ATAC = torch.FloatTensor(self.expr_ATAC)
+        self.raw = torch.FloatTensor(count)
+
+        if standardize:
+            count = StandardScaler().fit_transform(count)
+        
+        # get processed count matrix 
+        self.expr = torch.FloatTensor(count)
+        self.cell_labels = cell_labels
+
+        # get batch number 
+        self.batch_num = 2
         
     def __len__(self):
-        # number of cells
-        return len(self.expr_ATAC)
-
+        return self.expr.shape[0]
+    
     def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-        
-        # index denote the index of the cell
-        sample = {'count': self.expr_ATAC[idx,:], 'index':idx, 'cell_type': self.cell_type_ATAC[idx]}
-        
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
         return sample
 
-    
 class test_s_curve(Dataset):
     
     def __init__(self):
@@ -204,6 +176,7 @@ class test_paul(Dataset):
         sample = {'count':self.expr_RNA[idx,:], 'index':idx}
         
         return sample
+
 
 """
 class testDataset(Dataset):

@@ -1,0 +1,3 @@
+**Read sc-GEM Data from Cheow 2016**
+
+This dataset contains matched gene expression and DNA methylation measurements from 177 human BJ fibroblast cells undergoing reprogramming to iPS cells. Cheow et al. measured the expression levels of 34 genes and the methylation status of promoters for 27 genes. The data are stored in CSV files with cells in rows and features in columns. The dataset contains time points taken 0, 8, 16, and 24 days after the beginning of reprogramming, as well as fully reprogrammed iPS cells.

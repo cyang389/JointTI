@@ -97,7 +97,9 @@ def tsne_ATAC(X):
     return tsne[:,:2]
 
 
-def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_atac, diff_sim_rna, diff_sim_atac, optimizer_rna, optimizer_atac, optimizer_D, n_epochs = 50, n_iter = 15, lamb_r = 1, lamb_d = 1):
+def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_atac, diff_sim_rna, 
+                   diff_sim_atac, optimizer_rna, optimizer_atac, optimizer_D, n_epochs = 50, 
+                   n_iter = 15, lamb_r_rna = 1, lamb_r_atac = 1):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for epoch in range(n_epochs):
@@ -111,7 +113,7 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
             batch_expr_r_rna = model_rna(batch_expr_rna)
             z_rna = model_rna[:1](batch_expr_rna)
 #             traj_loss(recon_x, x, z, diff_sim, lamb_recon = 1, lamb_dist = 1, recon_mode = "original")
-            train_loss_rna, loss_recon_rna, loss_dist_rna = traj_loss(recon_x = batch_expr_r_rna, x = batch_expr_rna, z = z_rna, diff_sim = batch_sim_rna, lamb_recon = lamb_r, lamb_dist = lamb_d, recon_mode = "relative")
+            train_loss_rna, loss_recon_rna, loss_dist_rna = traj_loss(recon_x = batch_expr_r_rna, x = batch_expr_rna, z = z_rna, diff_sim = batch_sim_rna, lamb_recon = lamb_r_rna, lamb_dist = 1, recon_mode = "relative")
 
             train_loss_rna.backward()
             optimizer_rna.step()
@@ -125,7 +127,7 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
             batch_expr_r_atac = model_atac(batch_expr_atac)
             z_atac = model_atac[:1](batch_expr_atac)
 
-            train_loss_atac, loss_recon_atac, loss_dist_atac = traj_loss(recon_x = batch_expr_r_atac, x = batch_expr_atac, z = z_atac, diff_sim = batch_sim_atac, lamb_recon = lamb_r, lamb_dist = lamb_d, recon_mode = "relative")
+            train_loss_atac, loss_recon_atac, loss_dist_atac = traj_loss(recon_x = batch_expr_r_atac, x = batch_expr_atac, z = z_atac, diff_sim = batch_sim_atac, lamb_recon = lamb_r_atac, lamb_dist = 1, recon_mode = "relative")
 
             train_loss_atac.backward()
             optimizer_atac.step()
@@ -169,6 +171,54 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
             print("epoch: ", epoch, log_rna, log_atac, log_D)
 
 
+
+
+def plot_latent(z1, z2, anno1 = None, anno2 = None, mode = "joint", save = None, figsize = (20,10)):
+    fig = plt.figure(figsize = figsize)
+    if mode == "modality":
+        colormap = plt.cm.get_cmap("Paired")
+        ax = fig.add_subplot()
+        ax.scatter(z1[:,0], z1[:,1], color = colormap(1), label = "RNA", alpha = 1)
+        ax.scatter(z2[:,0], z2[:,1], color = colormap(2), label = "ATAC", alpha = 1)
+        ax.legend()
+    elif mode == "joint":
+        ax = fig.add_subplot()
+        cluster_types = np.unique(anno1)
+        colormap = plt.cm.get_cmap("tab20", cluster_types.shape[0])
+
+        for i, cluster_type in enumerate(cluster_types):
+            index = np.where(anno1 == cluster_type)[0]
+            ax.scatter(z1[index,0], z1[index,1], color = colormap(i), label = cluster_type, alpha = 1)
+        
+        cluster_types = np.unique(anno2)
+        colormap = plt.cm.get_cmap("tab20", cluster_types.shape[0])
+        for i, cluster_type in enumerate(cluster_types):
+            index = np.where(anno2 == cluster_type)[0]
+            ax.scatter(z2[index,0], z2[index,1], color = colormap(i), label = cluster_type, alpha = 1)
+        ax.legend()
+
+    elif mode == "separate":
+        axs = fig.subplots(1,2)
+        cluster_types = np.unique(anno1)
+        colormap = plt.cm.get_cmap("tab20", cluster_types.shape[0])
+
+        for i, cluster_type in enumerate(cluster_types):
+            index = np.where(anno1 == cluster_type)[0]
+            axs[0].scatter(z1[index,0], z1[index,1], color = colormap(i), label = cluster_type, alpha = 1)
+        axs[0].legend()
+
+        cluster_types = np.unique(anno2)
+        colormap = plt.cm.get_cmap("tab20",  cluster_types.shape[0])
+
+        for i, cluster_type in enumerate(cluster_types):
+            index = np.where(anno2 == cluster_type)[0]
+            axs[1].scatter(z2[index,0], z2[index,1], color = colormap(i), label = cluster_type, alpha = 1)
+
+        axs[1].legend()
+    if save:
+        fig.savefig(save)
+
+"""
 def plot_backbone(model1, model2, loader1, loader2, celltype1, celltype2, device, file_path=None):
 
     model1.eval()
@@ -256,3 +306,5 @@ def plot_merge(model1, model2, loader1, loader2, celltype1, celltype2, device, f
     
     if file_path:
         fig.savefig(file_path)
+
+"""

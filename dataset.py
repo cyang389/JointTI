@@ -217,6 +217,129 @@ class endoATAC(Dataset):
         sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
         return sample
 
+class endoRNA_noIAC(Dataset):
+    def __init__(self, standardize = False, rna_seq_file = "./data/E10.5_CD44+_E+HE+IAC/scRNA_noIAC.csv", rna_celltype_file = "./data/E10.5_CD44+_E+HE+IAC/rna_celltype_noIAC.txt"):
+        """\
+        endo dataset
+
+        Parameters
+        ------------
+        rand_num
+            dataset number, from 1 to 5
+        batch_num
+            batch number, from 1 to 2
+        """
+
+        count = pd.read_csv(rna_seq_file, index_col=0).to_numpy()
+        cell_labels = []
+        with open(rna_celltype_file, "r") as fp:
+            for i in fp:
+                cell_labels.append(i.strip("\n"))
+
+        cell_labels = np.array(cell_labels)
+
+        self.raw = torch.FloatTensor(count)
+
+        if standardize:
+            count = StandardScaler().fit_transform(count)
+        
+        # get processed count matrix 
+        self.expr = torch.FloatTensor(count)
+        self.cell_labels = cell_labels
+
+        # get batch number 
+        self.batch_num = 1
+        
+    def __len__(self):
+        return self.expr.shape[0]
+    
+    def __getitem__(self, idx):
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
+        return sample
+
+class endoATAC_noIAC(Dataset):
+    def __init__(self, standardize = False, atac_seq_file = "./data/E10.5_CD44+_E+HE+IAC/scATAC_noIAC.csv", atac_celltype_file = "./data/E10.5_CD44+_E+HE+IAC/atac_celltype_noIAC.txt"):
+        """\
+        Symsim dataset
+
+        Parameters
+        ------------
+        rand_num
+            dataset number, from 1 to 5
+        batch_num
+            batch number, from 1 to 2
+        """
+
+        count = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
+        cell_labels = []
+        with open(atac_celltype_file, "r") as fp:
+            for i in fp:
+                cell_labels.append(i.strip("\n"))
+        cell_labels = np.array(cell_labels)
+
+        self.raw = torch.FloatTensor(count)
+
+        if standardize:
+            count = StandardScaler().fit_transform(count)
+        
+        # get processed count matrix 
+        self.expr = torch.FloatTensor(count)
+        self.cell_labels = cell_labels
+
+        # get batch number 
+        self.batch_num = 2
+        
+    def __len__(self):
+        return self.expr.shape[0]
+    
+    def __getitem__(self, idx):
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
+        return sample
+
+
+
+class lsiATAC(Dataset):
+    def __init__(self, standardize = False, atac_seq_file = "./data/E10.5_CD44+_E+HE+IAC/atac_lsi.csv", atac_celltype_file = "./data/E10.5_CD44+_E+HE+IAC/atac_celltype.txt"):
+        """\
+        Symsim dataset
+
+        Parameters
+        ------------
+        rand_num
+            dataset number, from 1 to 5
+        batch_num
+            batch number, from 1 to 2
+        """
+
+        count = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
+        cell_labels = []
+        with open(atac_celltype_file, "r") as fp:
+            for i in fp:
+                cell_labels.append(i.strip("\n"))
+        cell_labels = np.array(cell_labels)
+
+        self.raw = torch.FloatTensor(count)
+
+        if standardize:
+            count = StandardScaler().fit_transform(count)
+        
+        # get processed count matrix 
+        self.expr = torch.FloatTensor(count)
+        self.cell_labels = cell_labels
+
+        # get batch number 
+        self.batch_num = 2
+        
+    def __len__(self):
+        return self.expr.shape[0]
+    
+    def __getitem__(self, idx):
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
+        return sample
+
 
 
 

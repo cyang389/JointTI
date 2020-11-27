@@ -9,7 +9,7 @@ from sklearn.decomposition import PCA
 from sklearn.neighbors import kneighbors_graph
 import diffusion_dist as diff
 from model.loss import *
-
+import matplotlib.pyplot as plt
 from sklearn import manifold
 
 '''
@@ -97,7 +97,7 @@ def tsne_ATAC(X):
     return tsne[:,:2]
 
 
-def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_atac, diff_sim_rna, diff_sim_atac, optimizer_rna, optimizer_atac, optimizer_D, n_epochs = 50, lamb_r = 1, lamb_d = 1):
+def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_atac, diff_sim_rna, diff_sim_atac, optimizer_rna, optimizer_atac, optimizer_D, n_epochs = 50, n_iter = 15, lamb_r = 1, lamb_d = 1):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for epoch in range(n_epochs):
@@ -138,7 +138,6 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
 
             # Update Discriminator
             D_loss_avg = 0
-            n_iter = 15
             n_rna = batch_cols_rna.shape[0]
             n_atac = batch_cols_atac.shape[0]
             # note that detach here is necessary, use directly will cause error in encoder update later
@@ -170,4 +169,90 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
             print("epoch: ", epoch, log_rna, log_atac, log_D)
 
 
+def plot_backbone(model1, model2, loader1, loader2, celltype1, celltype2, device, file_path=None):
+
+    model1.eval()
+    model2.eval()
+    fig = plt.figure(figsize = (20,10))
+    ax = fig.add_subplot()
+    ax.set_title('Backbone')
+
+    for data in loader1:
+        ae_coordinates = model1[:1](data['count'].to(device)).cpu().detach().numpy()
+    cluster_types = np.unique(celltype1)
+    colormap = plt.cm.get_cmap("tab20", cluster_types.shape[0])
+
+    for i, cluster_type in enumerate(cluster_types):
+        index = np.where(celltype1 == cluster_type)[0]
+        ax.scatter(ae_coordinates[index,0], ae_coordinates[index,1], color = colormap(i), alpha = 1)
+
+    for data in loader2:
+        ae_coordinates = model2[:1](data['count'].to(device)).cpu().detach().numpy()
+    cluster_types = np.unique(celltype2)
+    colormap = plt.cm.get_cmap("tab20", cluster_types.shape[0])
+
+    for i, cluster_type in enumerate(cluster_types):
+        index = np.where(celltype2 == cluster_type)[0]
+        ax.scatter(ae_coordinates[index,0], ae_coordinates[index,1], color = colormap(i), alpha = 1)
+
+    ax.legend(cluster_types)
+
+    if file_path:
+        fig.savefig(file_path)
+
+def plot_separate(model1, model2, loader1, loader2, celltype1, celltype2, device, file_path=None):
+
+    model1.eval()
+    model2.eval()
+    fig = plt.figure(figsize = (20,7))
+    axs = fig.subplots(1,2)
+    axs[0].set_title('RNA')
+    axs[1].set_title('ATAC')
+
+    for data in loader1:
+        ae_coordinates = model1[:1](data['count'].to(device)).cpu().detach().numpy()
+    cluster_types = np.unique(celltype1)
+    colormap = plt.cm.get_cmap("tab20", cluster_types.shape[0])
+
+    for i, cluster_type in enumerate(cluster_types):
+        index = np.where(celltype1 == cluster_type)[0]
+        axs[0].scatter(ae_coordinates[index,0], ae_coordinates[index,1], color = colormap(i), alpha = 1)
+    axs[0].legend(cluster_types)
+
+    for data in loader2:
+        ae_coordinates = model2[:1](data['count'].to(device)).cpu().detach().numpy()
+    cluster_types = np.unique(celltype2)
+    colormap = plt.cm.get_cmap("tab20",  cluster_types.shape[0])
+
+    for i, cluster_type in enumerate(cluster_types):
+        index = np.where(celltype2 == cluster_type)[0]
+        axs[1].scatter(ae_coordinates[index,0], ae_coordinates[index,1], color = colormap(i), alpha = 1)
+
+    axs[1].legend(cluster_types)
     
+    if file_path:
+        fig.savefig(file_path)
+
+
+def plot_merge(model1, model2, loader1, loader2, celltype1, celltype2, device, file_path=None):
+
+    model1.eval()
+    model2.eval()
+    fig = plt.figure(figsize = (20,10))
+    ax = fig.add_subplot()
+    ax.set_title('Merge')
+    colormap = plt.cm.get_cmap("Paired")
+
+    for data in loader1:
+        ae_coordinates = model1[:1](data['count'].to(device)).cpu().detach().numpy()
+
+    ax.scatter(ae_coordinates[:,0], ae_coordinates[:,1], color = colormap(1), label = "batch1", alpha = 1)
+
+    for data in loader2:
+        ae_coordinates = model2[:1](data['count'].to(device)).cpu().detach().numpy()
+    ax.scatter(ae_coordinates[:,0], ae_coordinates[:,1], color = colormap(2), label = "batch2", alpha = 1)
+
+    ax.legend()
+    
+    if file_path:
+        fig.savefig(file_path)

@@ -173,6 +173,80 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
 
 
 
+def train_paired(model_rna, model_atac, disc, data_loader_rna, data_loader_atac, diff_sim_rna, 
+                   diff_sim_atac, optimizer_rna, optimizer_atac, optimizer_D, n_epochs = 50, 
+                   n_iter = 15, lamb_r_rna = 1, lamb_r_atac = 1):
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    for epoch in range(n_epochs):
+        for data in zip(data_loader_rna, data_loader_atac):
+            # Update RNA Encoder
+            data_rna, data_atac = data
+            batch_cols_rna = data_rna['index'].to(device)
+            batch_sim_rna = diff_sim_rna[batch_cols_rna,:][:,batch_cols_rna]
+            batch_expr_rna = data_rna['count'].to(device)
+
+            batch_expr_r_rna = model_rna(batch_expr_rna)
+            z_rna = model_rna[:1](batch_expr_rna)
+            train_loss_rna, loss_recon_rna, loss_dist_rna = traj_loss(recon_x = batch_expr_r_rna, x = batch_expr_rna, z = z_rna, diff_sim = batch_sim_rna, lamb_recon = lamb_r_rna, lamb_dist = 1, recon_mode = "relative")
+
+            train_loss_rna.backward()
+            optimizer_rna.step()
+            optimizer_rna.zero_grad()
+
+            # Update ATAC Encoder
+            batch_cols_atac = data_atac['index'].to(device)
+            batch_sim_atac = diff_sim_atac[batch_cols_atac,:][:,batch_cols_atac]
+            batch_expr_atac = data_atac['count'].to(device)
+
+            batch_expr_r_atac = model_atac(batch_expr_atac)
+            z_atac = model_atac[:1](batch_expr_atac)
+
+            train_loss_atac, loss_recon_atac, loss_dist_atac = traj_loss(recon_x = batch_expr_r_atac, x = batch_expr_atac, z = z_atac, diff_sim = batch_sim_atac, lamb_recon = lamb_r_atac, lamb_dist = 1, recon_mode = "relative")
+
+            train_loss_atac.backward()
+            optimizer_atac.step()
+            optimizer_atac.zero_grad()
+
+            # need to go through all the calculation again since the encoder has been updated, ERROR shows up in pytorch 1.5 and above.
+            # see: https://github.com/pytorch/pytorch/issues/39141 
+            z_rna = model_rna[:1](batch_expr_rna)
+            z_atac = model_atac[:1](batch_expr_atac)
+
+            # Update Discriminator
+            D_loss_avg = 0
+            n_rna = batch_cols_rna.shape[0]
+            n_atac = batch_cols_atac.shape[0]
+            # note that detach here is necessary, use directly will cause error in encoder update later
+            input_disc = torch.cat((z_rna.detach(), z_atac.detach()), dim = 0)
+            target = torch.cat((torch.full((n_rna, ), 0, dtype = torch.float), torch.full((n_atac, ), 1, dtype = torch.float))).to(device)
+            
+
+            for i in range(n_iter):
+                output = disc(input_disc).squeeze()
+                D_loss = F.binary_cross_entropy(output, target)
+                D_loss_avg += D_loss.item()
+                D_loss.backward()
+                optimizer_D.step()
+                optimizer_D.zero_grad()
+            D_loss_avg /= n_iter
+
+            # Update Encoder
+            E_loss = -1 * F.binary_cross_entropy(disc(torch.cat((z_rna, z_atac), dim = 0)).squeeze(), target)
+            E_loss.backward()
+            optimizer_rna.step()
+            optimizer_atac.step()
+            optimizer_rna.zero_grad()
+            optimizer_atac.zero_grad()
+
+        if epoch % 10 == 0:
+            log_rna = "RNA loss: {:.5f}, RNA recon loss: {:.5f}, RNA dist loss: {:.5f}".format(train_loss_rna.item(), loss_recon_rna.item(), loss_dist_rna.item())
+            log_atac = "ATAC loss: {:.5f}, ATAC recon loss: {:.5f}, ATAC dist loss: {:.5f}".format(train_loss_atac.item(), loss_recon_atac.item(), loss_dist_atac.item())
+            log_D = "Discriminator loss: {:.5f}".format(D_loss_avg)
+            print("epoch: ", epoch, log_rna, log_atac, log_D)
+
+
+
 def plot_latent(z1, z2, anno1 = None, anno2 = None, mode = "joint", save = None, figsize = (20,10)):
     fig = plt.figure(figsize = figsize)
     if mode == "modality":

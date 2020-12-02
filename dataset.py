@@ -299,6 +299,92 @@ class endoATAC_noIAC(Dataset):
         return sample
 
 
+class shareseq(Dataset):
+    def __init__(self, standardize = False, atac_seq_file = "./data/SHARE-seq/motif_dev_z.csv", 
+    atac_celltype_file = "./data/SHARE-seq/celltypes.txt", rna_seq_file = "./data/SHARE-seq/scRNA.csv", 
+    rna_celltype_file = "./data/SHARE-seq/celltypes.txt"):
+        """\
+        Symsim dataset
+
+        Parameters
+        ------------
+        rand_num
+            dataset number, from 1 to 5
+        batch_num
+            batch number, from 1 to 2
+        """
+
+        count_atac = pd.read_csv(atac_seq_file, index_col=0).values[::3,:]
+        count_rna = pd.read_csv(rna_seq_file, index_col=0).values[::3,:]
+        cell_labels = []
+        with open(atac_celltype_file, "r") as fp:
+            for i in fp:
+                cell_labels.append(i.strip("\n"))
+        cell_labels = np.array(cell_labels)
+
+        self.raw_atac = torch.FloatTensor(count_atac)
+        self.raw_rna = torch.FloatTensor(count_rna)
+
+        if standardize:
+            count_atac = StandardScaler().fit_transform(count_atac)
+            count_rna = StandardScaler().fit_transform(count_rna)
+        
+        # get processed count matrix 
+        self.expr = torch.FloatTensor(count)
+        self.cell_labels = cell_labels
+
+        # get batch number 
+        self.batch_num = 2
+        
+    def __len__(self):
+        return self.expr.shape[0]
+    
+    def __getitem__(self, idx):
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
+        return sample
+
+class shareseq_rna(Dataset):
+    def __init__(self, standardize = False, rna_seq_file = "./data/SHARE-seq/scRNA.csv", rna_celltype_file = "./data/SHARE-seq/celltypes.txt"):
+        """\
+        Symsim dataset
+
+        Parameters
+        ------------
+        rand_num
+            dataset number, from 1 to 5
+        batch_num
+            batch number, from 1 to 2
+        """
+
+        count = pd.read_csv(rna_seq_file, index_col=0).values[::3,:]
+        cell_labels = []
+        with open(rna_celltype_file, "r") as fp:
+            for i in fp:
+                cell_labels.append(i.strip("\n"))
+        cell_labels = np.array(cell_labels)
+
+        self.raw = torch.FloatTensor(count)
+
+        if standardize:
+            count = StandardScaler().fit_transform(count)
+        
+        # get processed count matrix 
+        self.expr = torch.FloatTensor(count)
+        self.cell_labels = cell_labels
+
+        # get batch number 
+        self.batch_num = 2
+        
+    def __len__(self):
+        return self.expr.shape[0]
+    
+    def __getitem__(self, idx):
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
+        return sample
+
+
 
 class lsiATAC(Dataset):
     def __init__(self, standardize = False, atac_seq_file = "./data/E10.5_CD44+_E+HE+IAC/atac_lsi.csv", atac_celltype_file = "./data/E10.5_CD44+_E+HE+IAC/atac_celltype.txt"):

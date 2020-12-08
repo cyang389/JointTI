@@ -8,7 +8,7 @@ warnings.filterwarnings('ignore')
 
 
 
-def phate_similarity(data, n_neigh = 5, t = 5, use_potential = True):
+def phate_similarity(data, n_neigh = 5, t = 5, use_potential = True, **kwargs):
     """\
     Description:
     ------------
@@ -33,10 +33,17 @@ def phate_similarity(data, n_neigh = 5, t = 5, use_potential = True):
     import graphtools as gt
     from scipy.spatial.distance import pdist, squareform
     
-    # pairwise-distance graph
-    G = gt.Graph(data, n_pca = 100, knn = n_neigh, use_pygsp=True)
+    # pairwise-distance graph, if decaying kernel with threshold, then will use knn basically, if decaying kernel without threshold, then using exact graph
+    # threshold default is 1e-4
+    
+    # what it did is basically calculate the radius neighbor, and then using kernel function, and then filter the kernel function again
+    G = gt.Graph(data, n_pca = 100, knn = n_neigh, **kwargs)
     # obtain transition matrix
-    T = G.diff_op.toarray()
+    T = G.diff_op
+    
+    if scipy.sparse.issparse(T):
+        T = T.toarray()
+    
     # T to the power of t
     T_t = np.linalg.matrix_power(T, t)
     # calculate potential distance used as feature vector for each cell

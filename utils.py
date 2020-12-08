@@ -104,7 +104,8 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for epoch in range(n_epochs):
-        iteration = zip(data_loader_rna, cycle(data_loader_atac)) if len(data_loader_rna) > len(data_loader_atac) else zip(data_loader_atac, cycle(data_loader_rna))
+        # iteration = zip(data_loader_rna, cycle(data_loader_atac)) if len(data_loader_rna) > len(data_loader_atac) else zip(cycle(data_loader_rna), data_loader_atac)
+        iteration = zip(data_loader_rna, data_loader_atac)
         for data in iteration:
             # Update RNA Encoder
             data_rna, data_atac = data

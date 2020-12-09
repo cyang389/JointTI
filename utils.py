@@ -99,7 +99,7 @@ def tsne_ATAC(X):
 
 
 def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_atac, diff_sim_rna, 
-                   diff_sim_atac, optimizer_rna, optimizer_atac, optimizer_D, U_rna = None, U_atac = None, n_epochs = 50, 
+                   diff_sim_atac, optimizer_rna, optimizer_atac, optimizer_D, P_rna = None, P_atac = None, n_epochs = 50, 
                    n_iter = 15, lamb_r_rna = 1, lamb_r_atac = 1, lamb_disc = 1, dist_mode = "inner_product"):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -111,13 +111,13 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
             batch_cols_rna = data_rna['index'].to(device)
             batch_sim_rna = diff_sim_rna[batch_cols_rna,:][:,batch_cols_rna]
             batch_expr_rna = data_rna['count'].to(device)
-            # batch U_t
-            batch_U_rna = U_rna[batch_cols_rna, :][:, batch_cols_rna]
+            # batch P
+            batch_P_rna = P_rna[batch_cols_rna, :][:, batch_cols_rna]
 
             batch_expr_r_rna = model_rna(batch_expr_rna)
             z_rna = model_rna[:1](batch_expr_rna)
             train_loss_rna, loss_recon_rna, loss_dist_rna = traj_loss(recon_x = batch_expr_r_rna, x = batch_expr_rna, z = z_rna, 
-            diff_sim = batch_sim_rna, U_t = batch_U_rna, lamb_recon = lamb_r_rna, lamb_dist = 1, recon_mode = "relative", dist_mode = dist_mode)
+            diff_sim = batch_sim_rna, Pt = batch_P_rna, lamb_recon = lamb_r_rna, lamb_dist = 1, recon_mode = "relative", dist_mode = dist_mode)
 
             train_loss_rna.backward()
             optimizer_rna.step()
@@ -128,12 +128,12 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
             batch_sim_atac = diff_sim_atac[batch_cols_atac,:][:,batch_cols_atac]
             batch_expr_atac = data_atac['count'].to(device)
             # batch U_t
-            batch_U_atac = U_atac[batch_cols_atac, :][:, batch_cols_atac]
+            batch_P_atac = P_atac[batch_cols_atac, :][:, batch_cols_atac]
 
             batch_expr_r_atac = model_atac(batch_expr_atac)
             z_atac = model_atac[:1](batch_expr_atac)
             train_loss_atac, loss_recon_atac, loss_dist_atac = traj_loss(recon_x = batch_expr_r_atac, x = batch_expr_atac, z = z_atac, 
-            diff_sim = batch_sim_atac, U_t = batch_U_atac, lamb_recon = lamb_r_atac, lamb_dist = 1, recon_mode = "relative", dist_mode = dist_mode)
+            diff_sim = batch_sim_atac, Pt = batch_P_atac, lamb_recon = lamb_r_atac, lamb_dist = 1, recon_mode = "relative", dist_mode = dist_mode)
 
             train_loss_atac.backward()
             optimizer_atac.step()

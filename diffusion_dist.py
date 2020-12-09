@@ -54,7 +54,7 @@ def phate_similarity(data, n_neigh = 5, t = 5, use_potential = True, **kwargs):
     # calculate pairwise feature vector distance
     dist = squareform(pdist(U_t))
     
-    return dist
+    return U_t, dist
     
 
 

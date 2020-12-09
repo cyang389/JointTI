@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import torch.nn.functional as F
 
 
@@ -111,7 +112,51 @@ def paired_loss(z1, z2):
 
 
 
-def traj_loss(recon_x, x, z, diff_sim, lamb_recon = 1, lamb_dist = 1, recon_mode = "original"):
+
+
+def kernel(dist, knn = 5, bandwidth_scale = 0, decay = 40, thresh = 0):
+    """
+    Kernelize the distance matrix
+
+    Parameters
+    -------
+    dist: Pair-wise distance matrix
+
+    Returns
+    -------
+    K : kernel matrix, shape=[n_samples, n_samples]
+        symmetric matrix with ones down the diagonal
+        with no non-negative entries.
+
+    Raises
+    ------
+    ValueError: if `precomputed` is not an acceptable value
+    """
+
+    # np.partition, first sort the value of each row(small to large), pick the knn+1th element, and put it in the knn+1th place, 
+    # and the elements smaller than the value are put in the front, rest are put in the later (without changing order)
+
+    # here basically find the knnth neighbor
+    knn_dist = np.partition(dist.detach().numpy(), knn + 1, axis=1)[:, :knn + 1]
+    # find the largest one
+    bandwidth = np.max(knn_dist, axis=1)
+    bandwidth = torch.FloatTensor(bandwidth * bandwidth_scale)
+    # divide by the knnth neighbor
+    dist = (dist.T / bandwidth).T
+    K = torch.exp(-1 * torch.matrix_power(dist, decay))
+    # handle nan
+    # K = np.where(np.isnan(K), 1, K)
+    # torch ver 1.8
+    # torch.nan_to_num(K, nan = 1)
+    assert torch.sum(torch.isnan(K)) == 0
+    # K[K!=K] = 1.0
+    # K[K < thresh] = 0
+    return K
+
+
+
+
+def traj_loss(recon_x, x, z, diff_sim, U_t = None, lamb_recon = 1, lamb_dist = 1, recon_mode = "original", dist_mode = "inner_product"):
     """\
     Description:
     ------------
@@ -158,14 +203,34 @@ def traj_loss(recon_x, x, z, diff_sim, lamb_recon = 1, lamb_dist = 1, recon_mode
 
     # cosine similarity loss
     latent_sim = pairwise_distance(z)
-        
-    # normalize latent similarity matrix
-    latent_sim = latent_sim / torch.norm(latent_sim, p='fro')
-    diff_sim = diff_sim / torch.norm(diff_sim, p = 'fro')
 
-    # inner product loss, maximize, so add negative before, in addition, make sure those two values are normalized, with norm 1
-    loss_dist = - lamb_dist * torch.sum(diff_sim * latent_sim) 
-    
+    if dist_mode == "inner_product":
+        # normalize latent similarity matrix
+        latent_sim = latent_sim / torch.norm(latent_sim, p='fro')
+        diff_sim = diff_sim / torch.norm(diff_sim, p = 'fro')
+        # inner product loss, maximize, so add negative before, in addition, make sure those two values are normalized, with norm 1
+        loss_dist = - lamb_dist * torch.sum(diff_sim * latent_sim) 
+
+    elif dist_mode == "mse":
+        # MSE loss
+        # normalize latent similarity matrix
+        latent_sim = latent_sim / torch.norm(latent_sim, p='fro')
+        diff_sim = diff_sim / torch.norm(diff_sim, p = 'fro')
+        loss_dist = lamb_dist * torch.norm(diff_sim - latent_sim, p = 'fro')
+    elif dist_mode == "kl":
+        if U_t is None:
+            raise ValueError("`U_t` cannot be `None`")
+        K = kernel(latent_sim)
+        # normalize into transition probability
+        P = K / torch.sum(K, dim = 1)[:,None]
+        # n_sample by n_dimension, diffusion distribution from original space
+        U_t = U_t / torch.sum(U_t, dim = 1)[:,None]
+        # average JSD
+        M = 0.5 * (U_t + P)
+        kl = 0.5 * torch.sum(P * torch.log(P / M)) + 0.5 *  torch.sum(M * torch.log(M / P))
+        loss_dist = lamb_dist * kl
+    else:
+        raise ValueError("`dist_model` should only be `mse` or `inner_product`")
 
     loss = loss_recon + loss_dist
     return loss, loss_recon, loss_dist

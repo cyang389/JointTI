@@ -98,9 +98,69 @@ def tsne_ATAC(X):
     return tsne[:,:2]
 
 
+def pre_train_ae(model, data_loader, diff_sim, optimizer, P = None, n_epochs = 50, lambda_r = 1, dist_mode = "inner_product"):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    for epoch in range(n_epochs):
+        for data in data_loader:
+            b_cell_idx = data["index"].to(device)
+            b_diff_sim = diff_sim[b_cell_idx,:][:,b_cell_idx]
+            b_expr = data["count"].to(device)
+            if dist_mode == "kl":
+                b_P = P[b_cell_idx,:][:,b_cell_idx]
+            else:
+                b_P = None
+            
+            # forward pass through the autoencoder
+            b_expr_r = model(b_expr)
+            b_z = model[:1](b_expr)
+            loss_total, loss_recon, loss_dist = traj_loss(recon_x = b_expr_r, x = b_expr, z = b_z, 
+            diff_sim = b_diff_sim, Pt = b_P, lamb_recon = lambda_r, lamb_dist = 1, recon_mode = "relative", dist_mode = dist_mode)
+
+            # backward pass
+            loss_total.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+        if epoch % 10 == 0:
+            log = "Total loss: {:.5f}, recon loss: {:.5f}, dist loss: {:.5f}".format(loss_total.item(), loss_recon.item(), loss_dist.item())
+            print("epoch: ", epoch, log)
+
+
+
+def pre_train_disc(model_rna, model_atac, disc, data_loader_rna, data_loader_atac, optimizer_D, n_epochs = 10):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    for epoch in range(n_epochs):
+        for data in zip(data_loader_rna, data_loader_atac):
+            data_rna, data_atac = data
+
+            b_expr_rna = data_rna["count"].to(device)
+            b_expr_atac = data_atac["count"].to(device)
+            
+            z_rna = model_rna[:1](b_expr_rna)   
+            z_atac = model_atac[:1](b_expr_atac)
+            # Update Discriminator
+            
+            n_rna = z_rna.shape[0]
+            n_atac = z_atac.shape[0]
+            # note that detach here is necessary, use directly will cause error in encoder update later
+            input_disc = torch.cat((z_rna.detach(), z_atac.detach()), dim = 0)
+            target = torch.cat((torch.full((n_rna, ), 0, dtype = torch.float), torch.full((n_atac, ), 1, dtype = torch.float))).to(device)
+            
+            output = disc(input_disc).squeeze()
+            D_loss = F.binary_cross_entropy(output, target)
+            D_loss.backward()
+            optimizer_D.step()
+            optimizer_D.zero_grad()
+
+        if epoch % 10 == 0:
+            log = "Discriminator loss: {:.5f}".format(D_loss)
+            print("epoch: ", epoch, log)
+
+
+
 def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_atac, diff_sim_rna, 
                    diff_sim_atac, optimizer_rna, optimizer_atac, optimizer_D, P_rna = None, P_atac = None, n_epochs = 50, 
-                   n_iter = 15, lamb_r_rna = 1, lamb_r_atac = 1, lamb_disc = 1, dist_mode = "inner_product"):
+                   n_iter = 15, n_iter2 = 1, lamb_r_rna = 1, lamb_r_atac = 1, lamb_disc = 1, dist_mode = "inner_product"):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for epoch in range(n_epochs):
@@ -112,7 +172,10 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
             batch_sim_rna = diff_sim_rna[batch_cols_rna,:][:,batch_cols_rna]
             batch_expr_rna = data_rna['count'].to(device)
             # batch P
-            batch_P_rna = P_rna[batch_cols_rna, :][:, batch_cols_rna]
+            if dist_mode == "kl":
+                batch_P_rna = P_rna[batch_cols_rna, :][:, batch_cols_rna]
+            else:
+                batch_P_rna = None
 
             batch_expr_r_rna = model_rna(batch_expr_rna)
             z_rna = model_rna[:1](batch_expr_rna)
@@ -128,7 +191,10 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
             batch_sim_atac = diff_sim_atac[batch_cols_atac,:][:,batch_cols_atac]
             batch_expr_atac = data_atac['count'].to(device)
             # batch U_t
-            batch_P_atac = P_atac[batch_cols_atac, :][:, batch_cols_atac]
+            if dist_mode == "kl":
+                batch_P_atac = P_atac[batch_cols_atac, :][:, batch_cols_atac]
+            else:
+                batch_P_atac = None
 
             batch_expr_r_atac = model_atac(batch_expr_atac)
             z_atac = model_atac[:1](batch_expr_atac)
@@ -163,12 +229,15 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
             D_loss_avg /= n_iter
 
             # Update Encoder
-            E_loss = -lamb_disc * F.binary_cross_entropy(disc(torch.cat((z_rna, z_atac), dim = 0)).squeeze(), target)
-            E_loss.backward()
-            optimizer_rna.step()
-            optimizer_atac.step()
-            optimizer_rna.zero_grad()
-            optimizer_atac.zero_grad()
+            for i in range(n_iter2):
+                z_rna = model_rna[:1](batch_expr_rna)
+                z_atac = model_atac[:1](batch_expr_atac)
+                E_loss = -lamb_disc * F.binary_cross_entropy(disc(torch.cat((z_rna, z_atac), dim = 0)).squeeze(), target)
+                E_loss.backward()
+                optimizer_rna.step()
+                optimizer_atac.step()
+                optimizer_rna.zero_grad()
+                optimizer_atac.zero_grad()
 
         if epoch % 10 == 0:
             log_rna = "RNA loss: {:.5f}, RNA recon loss: {:.5f}, RNA dist loss: {:.5f}".format(train_loss_rna.item(), loss_recon_rna.item(), loss_dist_rna.item())

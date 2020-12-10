@@ -16,7 +16,7 @@ import scanpy as sc
 
 
 class symsim_batches(Dataset):
-    def __init__(self, rand_num = 1, batch_num = 1):
+    def __init__(self, rand_num = 1, batch_num = 1, anchor = None):
         """\
         Symsim dataset
 
@@ -43,7 +43,12 @@ class symsim_batches(Dataset):
         # get processed count matrix 
         self.expr = torch.FloatTensor(adata.X[batch_idx,:])
         self.cell_labels = cell_labels.iloc[batch_idx,:]
+        if anchor is not None:
+            self.is_anchor = (self.cell_labels["pop"].values == anchor)
+        else:
+            self.is_anchor = np.zeros(self.cell_labels.shape[0]).astype("bool")
 
+        self.is_anchor = torch.tensor(self.is_anchor)
         # get batch number 
         self.batch_num = batch_num
         
@@ -53,7 +58,7 @@ class symsim_batches(Dataset):
     
     def __getitem__(self, idx):
         # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
-        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num}
+        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "is_anchor": self.is_anchor[idx]}
         return sample
 
 class hhRNA1(Dataset):
@@ -297,8 +302,6 @@ class endoATAC_noIAC(Dataset):
         # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
         sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
         return sample
-
-
 
 class lsiATAC(Dataset):
     def __init__(self, standardize = False, atac_seq_file = "./data/E10.5_CD44+_E+HE+IAC/atac_lsi.csv", atac_celltype_file = "./data/E10.5_CD44+_E+HE+IAC/atac_celltype.txt"):

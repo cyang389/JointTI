@@ -127,7 +127,7 @@ def pre_train_ae(model, data_loader, diff_sim, optimizer, P = None, n_epochs = 5
 
 
 
-def pre_train_disc(model_rna, model_atac, disc, data_loader_rna, data_loader_atac, optimizer_D, n_epochs = 10):
+def pre_train_disc(model_rna, model_atac, disc, data_loader_rna, data_loader_atac, optimizer_D, n_epochs = 10, use_anchor = False):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for epoch in range(n_epochs):
         for data in zip(data_loader_rna, data_loader_atac):
@@ -135,6 +135,8 @@ def pre_train_disc(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
 
             b_expr_rna = data_rna["count"].to(device)
             b_expr_atac = data_atac["count"].to(device)
+            b_anchor_rna = data_rna["is_anchor"].to(device)
+            b_anchor_atac = data_atac["is_anchor"].to(device)
             
             z_rna = model_rna[:1](b_expr_rna)   
             z_atac = model_atac[:1](b_expr_atac)
@@ -151,6 +153,22 @@ def pre_train_disc(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
             D_loss.backward()
             optimizer_D.step()
             optimizer_D.zero_grad()
+            
+
+            if use_anchor:
+                z_rna = model_rna[:1](b_expr_rna)   
+                z_atac = model_atac[:1](b_expr_atac)
+
+                z_anchor_rna = z_rna.detach()[b_anchor_rna,:]
+                z_anchor_atac = z_atac.detach()[b_anchor_atac,:]
+
+                input_disc = torch.cat((z_anchor_rna, z_anchor_atac), dim = 0)
+                target = torch.cat((torch.zeros(z_anchor_rna.shape[0], dtype = torch.float), torch.ones(z_anchor_atac.shape[0], dtype = torch.float)), dim = 0).to(device)
+                output = disc(input_disc).squeeze()
+                D_loss = F.binary_cross_entropy(output, target)
+                
+
+
 
         if epoch % 10 == 0:
             log = "Discriminator loss: {:.5f}".format(D_loss)
@@ -160,7 +178,58 @@ def pre_train_disc(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
 
 def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_atac, diff_sim_rna, 
                    diff_sim_atac, optimizer_rna, optimizer_atac, optimizer_D, P_rna = None, P_atac = None, n_epochs = 50, 
-                   n_iter = 15, n_iter2 = 1, lamb_r_rna = 1, lamb_r_atac = 1, lamb_disc = 1, dist_mode = "inner_product"):
+                   n_iter = 51, n_iter2 = 1, lamb_r_rna = 1, lamb_r_atac = 1, lamb_disc = 1, dist_mode = "inner_product", use_anchor = False):
+    """\
+    Description:
+    -----------
+        Training the adversarial network
+        
+    Parameters:
+    -----------
+        model_rna: 
+            auto-encoder for RNA
+        model_atac: 
+            auto-encoder for ATAC
+        disc:
+            discriminator
+        data_loader_rna:
+            data loader for RNA
+        data_loader_atac:
+            data loader for ATAC
+        diff_sim_rna:
+            diffusion distance for RNA
+        diff_sim_atac:
+            diffusion distance for ATAC
+        optimizer_rna:
+            optimizer for the first auto-encoder
+        optimizer_atac:
+            optimizer for the second auto-encoder
+        optimizer_D:
+            optimizer for discriminator
+        P_rna:
+            transition matrix of RNA diffusion process
+        P_atac:
+            transition matrix of ATAC diffusion process
+        n_epochs:
+            number of training epochs
+        n_iter:
+            number of iteration for the inner loop of adversarial net
+        n_iter2:
+            number of iteration for the inner loop of the encoder
+        lamb_r_rna:
+            lambda of reconstruction for RNA
+        lamb_r_atac:
+            lambda of reconstruction for ATAC
+        lamb_disc:
+            lambda of discriminator 
+        dist_mode:
+            distance loss, can be of `inner_product`, `mse` and `kl`
+        use_anchor:
+            give anchor cluster or not
+
+    Returns:
+    -----------
+    """
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for epoch in range(n_epochs):
@@ -168,9 +237,11 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
         for data in iteration:
             # Update RNA Encoder
             data_rna, data_atac = data
-            batch_cols_rna = data_rna['index'].to(device)
+            batch_cols_rna = data_rna["index"].to(device)
             batch_sim_rna = diff_sim_rna[batch_cols_rna,:][:,batch_cols_rna]
-            batch_expr_rna = data_rna['count'].to(device)
+            batch_expr_rna = data_rna["count"].to(device)
+            batch_anchor_rna = data_rna["is_anchor"].to(device)
+
             # batch P
             if dist_mode == "kl":
                 batch_P_rna = P_rna[batch_cols_rna, :][:, batch_cols_rna]
@@ -190,6 +261,8 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
             batch_cols_atac = data_atac['index'].to(device)
             batch_sim_atac = diff_sim_atac[batch_cols_atac,:][:,batch_cols_atac]
             batch_expr_atac = data_atac['count'].to(device)
+            batch_anchor_atac = data_atac["is_anchor"].to(device)
+
             # batch U_t
             if dist_mode == "kl":
                 batch_P_atac = P_atac[batch_cols_atac, :][:, batch_cols_atac]
@@ -238,6 +311,42 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
                 optimizer_atac.step()
                 optimizer_rna.zero_grad()
                 optimizer_atac.zero_grad()
+            
+            if use_anchor:
+                # update disc for anchor
+                z_rna = model_rna[:1](batch_expr_rna)
+                z_atac = model_atac[:1](batch_expr_atac)
+
+                z_anchor_rna = z_rna.detach()[batch_anchor_rna,:]
+                z_anchor_atac = z_atac.detach()[batch_anchor_atac,:]
+
+
+                input_disc = torch.cat((z_anchor_rna, z_anchor_atac), dim = 0)
+                target = torch.cat((torch.zeros(z_anchor_rna.shape[0], dtype = torch.float), torch.ones(z_anchor_atac.shape[0], dtype = torch.float)), dim = 0).to(device)
+                D_loss_anchor = 0
+
+                for i in range(n_iter):
+                    output = disc(input_disc).squeeze()
+                    D_loss = lamb_disc * F.binary_cross_entropy(output, target)
+                    D_loss_anchor += D_loss.item()
+                    D_loss.backward()
+                    optimizer_D.step()
+                    optimizer_D.zero_grad()
+                D_loss_avg = (D_loss_avg + D_loss_anchor/n_iter)/2
+                
+                # update encoder for anchor
+                for i in range(n_iter2):
+                    z_rna = model_rna[:1](batch_expr_rna)
+                    z_atac = model_atac[:1](batch_expr_atac)
+
+
+                    E_loss = -lamb_disc * F.binary_cross_entropy(disc(torch.cat((z_rna[batch_anchor_rna,:], z_atac[batch_anchor_atac,:]), dim = 0)).squeeze(), target)
+                    E_loss.backward()
+                    optimizer_rna.step()
+                    optimizer_atac.step()
+                    optimizer_rna.zero_grad()
+                    optimizer_atac.zero_grad()
+                
 
         if epoch % 10 == 0:
             log_rna = "RNA loss: {:.5f}, RNA recon loss: {:.5f}, RNA dist loss: {:.5f}".format(train_loss_rna.item(), loss_recon_rna.item(), loss_dist_rna.item())

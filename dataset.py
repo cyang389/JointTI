@@ -15,6 +15,59 @@ import anndata
 import scanpy as sc
 
 
+class symsim2_rna(Dataset):
+    def __init__(self, standardize = False, anchor = None, counts_dir = "./data/symsim2/rand1/GxC.txt", anno_dir = "./data/symsim2/rand1/cell_label1.txt"):
+        count = pd.read_csv(counts_dir, header = None, sep = "\t").values.T
+        cell_labels = pd.read_csv(anno_dir, sep = "\t")["pop"].values
+        idx = np.where(cell_labels != "6_5")[0]
+
+        adata = anndata.AnnData(X = count[idx,:])    
+        sc.pp.normalize_per_cell(adata)
+        sc.pp.log1p(adata)
+
+        self.counts = torch.FloatTensor(adata.X)
+        self.cell_labels = cell_labels[idx]
+
+        if anchor is not None:
+            self.is_anchor = (self.cell_labels == anchor)
+        else:
+            self.is_anchor = np.zeros(self.cell_labels.shape[0]).astype("bool")
+        
+        self.is_anchor = torch.tensor(self.is_anchor)
+
+    def __len__(self):
+        return self.counts.shape[0]
+    
+    def __getitem__(self, idx):
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.counts[idx,:], "index": idx, "is_anchor": self.is_anchor[idx]}
+        return sample
+
+class symsim2_atac(Dataset):
+    def __init__(self, standardize = False, anchor = None, counts_dir = "./data/symsim2/rand2/RxC.txt", anno_dir = "./data/symsim2/rand2/cell_label2.txt"):
+        count = pd.read_csv(counts_dir, header = None, sep = "\t").values.T
+        count = np.where(count < 1, 0, 1)
+        cell_labels = pd.read_csv(anno_dir, sep = "\t")["pop"].values
+        idx = np.where(cell_labels != "6_5")[0]
+
+        self.counts = torch.FloatTensor(count[idx,:])
+        self.cell_labels = cell_labels[idx]
+        if anchor is not None:
+            self.is_anchor = (self.cell_labels == anchor)
+        else:
+            self.is_anchor = np.zeros(self.cell_labels.shape[0]).astype("bool")
+        
+        self.is_anchor = torch.tensor(self.is_anchor)
+
+    def __len__(self):
+        return self.counts.shape[0]
+    
+    def __getitem__(self, idx):
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.counts[idx,:], "index": idx, "is_anchor": self.is_anchor[idx]}
+        return sample
+
+
 class symsim_batches(Dataset):
     def __init__(self, rand_num = 1, batch_num = 1, anchor = None):
         """\
@@ -61,8 +114,11 @@ class symsim_batches(Dataset):
         sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "is_anchor": self.is_anchor[idx]}
         return sample
 
-class hhRNA1(Dataset):
-    def __init__(self, standardize = False, rna_seq_file = "./data/human_hematopoiesis/count_rna_1.csv", rna_celltype_file = "./data/human_hematopoiesis/celltypes_rna_1.txt"):
+class hhRNA(Dataset):
+    def __init__(self, standardize = False, 
+    rna_seq_file = "./data/human_hematopoiesis/count_rna_1.csv", 
+    rna_celltype_file = "./data/human_hematopoiesis/celltypes_rna_1.txt",
+    anchor = None):
         """\
         Symsim dataset
 
@@ -89,7 +145,8 @@ class hhRNA1(Dataset):
         # get processed count matrix 
         self.expr = torch.FloatTensor(count)
         self.cell_labels = cell_labels
-
+        if anchor is not None:
+            self.is_anchor = torch.tensor(cell_labels == anchor)
         # get batch number 
         self.batch_num = 1
         
@@ -98,11 +155,14 @@ class hhRNA1(Dataset):
     
     def __getitem__(self, idx):
         # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
-        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
+        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:], "is_anchor": self.is_anchor[idx]}
         return sample
 
-class hhATAC1(Dataset):
-    def __init__(self, standardize = False, atac_seq_file = "./data/human_hematopoiesis/count_atac_1.csv", atac_celltype_file = "./data/human_hematopoiesis/celltypes_atac_1.txt"):
+class hhATAC(Dataset):
+    def __init__(self, standardize = False, 
+    atac_seq_file = "./data/human_hematopoiesis/count_atac_1.csv", 
+    atac_celltype_file = "./data/human_hematopoiesis/celltypes_atac_1.txt",
+    anchor = None):
         """\
         Symsim dataset
 
@@ -129,6 +189,8 @@ class hhATAC1(Dataset):
         # get processed count matrix 
         self.expr = torch.FloatTensor(count)
         self.cell_labels = cell_labels
+        if anchor is not None:
+            self.is_anchor = torch.tensor(cell_labels == anchor)
 
         # get batch number 
         self.batch_num = 2
@@ -138,7 +200,7 @@ class hhATAC1(Dataset):
     
     def __getitem__(self, idx):
         # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
-        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
+        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:], "is_anchor": self.is_anchor[idx]}
         return sample
 
 class endoRNA(Dataset):

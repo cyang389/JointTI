@@ -31,30 +31,30 @@ class Encoder(nn.Module):
         self.lrelu_2 = nn.LeakyReLU(negative_slope = 0.2)
 
         self.hidden_layer3 = nn.Linear(in_features = cfg['layers'][1], out_features = cfg['layers'][2])
-        # self.lrelu_3 = nn.LeakyReLU(negative_slope = 0.2)
+        self.lrelu_3 = nn.LeakyReLU(negative_slope = 0.2)
 
-        # self.hidden_layer4 = nn.Linear(in_features = cfg['layers'][2], out_features = cfg['layers'][3])
+        self.hidden_layer4 = nn.Linear(in_features = cfg['layers'][2], out_features = cfg['layers'][3])
         
         if self.cfg['use_batchnorm']:
             self.batch_norm1 = nn.BatchNorm1d(num_features = self.cfg['layers'][0])
             self.batch_norm2 = nn.BatchNorm1d(num_features = self.cfg['layers'][1])
-            # self.batch_norm3 = nn.BatchNorm1d(num_features = self.cfg['layers'][2])
+            self.batch_norm3 = nn.BatchNorm1d(num_features = self.cfg['layers'][2])
 
 
     def forward(self, x):
         if self.cfg['use_batchnorm']:
             x = self.lrelu_1(self.batch_norm1(self.hidden_layer1(x)))
             x = self.lrelu_2(self.batch_norm2(self.hidden_layer2(x)))
-            # x = self.lrelu_3(self.batch_norm3(self.hidden_layer3(x)))
-            # embed = self.hidden_layer4(x)
-            embed = self.hidden_layer3(x)
+            x = self.lrelu_3(self.batch_norm3(self.hidden_layer3(x)))
+            embed = self.hidden_layer4(x)
+            # embed = self.hidden_layer3(x)
 
         else:
             x = self.lrelu_1(self.hidden_layer1(x))
             x = self.lrelu_2(self.hidden_layer2(x))
-            # x = self.lrelu_3(self.hidden_layer3(x))
-            # embed = self.hidden_layer4(x)
-            embed = self.hidden_layer3(x)
+            x = self.lrelu_3(self.hidden_layer3(x))
+            embed = self.hidden_layer4(x)
+            # embed = self.hidden_layer3(x)
         
         if self.cfg['use_tanh']:
             embed = F.tanh(embed)
@@ -67,8 +67,8 @@ class Decoder(nn.Module):
         
         self.cfg = cfg
         
-        # self.hidden_layer1 = nn.Linear(in_features = cfg['layers'][3], out_features = cfg['layers'][2])
-        # self.lrelu_1 = nn.LeakyReLU(negative_slope = 0.2)
+        self.hidden_layer1 = nn.Linear(in_features = cfg['layers'][3], out_features = cfg['layers'][2])
+        self.lrelu_1 = nn.LeakyReLU(negative_slope = 0.2)
 
         self.hidden_layer2 = nn.Linear(in_features = cfg['layers'][2], out_features = cfg['layers'][1])
         self.lrelu_2 = nn.LeakyReLU(negative_slope = 0.2)
@@ -79,7 +79,7 @@ class Decoder(nn.Module):
         self.hidden_layer4 = nn.Linear(in_features = cfg['layers'][0], out_features = cfg['in_features'])
         
         if self.cfg['use_batchnorm']:
-            # self.batch_norm1 = nn.BatchNorm1d(num_features = cfg['layers'][2])
+            self.batch_norm1 = nn.BatchNorm1d(num_features = cfg['layers'][2])
             self.batch_norm2 = nn.BatchNorm1d(num_features = cfg['layers'][1])
             self.batch_norm3 = nn.BatchNorm1d(num_features = cfg['layers'][0])
 
@@ -87,16 +87,16 @@ class Decoder(nn.Module):
 
     def forward(self, embed):
         if self.cfg['use_batchnorm']:
-            # x = self.lrelu_1(self.batch_norm1(self.hidden_layer1(embed)))
-            # x = self.lrelu_2(self.batch_norm2(self.hidden_layer2(x)))
-            x = self.lrelu_2(self.batch_norm2(self.hidden_layer2(embed)))
+            x = self.lrelu_1(self.batch_norm1(self.hidden_layer1(embed)))
+            x = self.lrelu_2(self.batch_norm2(self.hidden_layer2(x)))
+            # x = self.lrelu_2(self.batch_norm2(self.hidden_layer2(embed)))
             x = self.lrelu_3(self.batch_norm3(self.hidden_layer3(x)))
             recon = self.hidden_layer4(x)
         
         else:
-            # x = self.lrelu_1(self.hidden_layer1(embed))
-            # x = self.lrelu_2(self.hidden_layer2(x))
-            x = self.lrelu_2(self.hidden_layer2(embed))
+            x = self.lrelu_1(self.hidden_layer1(embed))
+            x = self.lrelu_2(self.hidden_layer2(x))
+            # x = self.lrelu_2(self.hidden_layer2(embed))
             x = self.lrelu_3(self.hidden_layer3(x))
             recon = self.hidden_layer4(x)
             

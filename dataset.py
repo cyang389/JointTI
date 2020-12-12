@@ -19,8 +19,8 @@ class symsim2_rna(Dataset):
     def __init__(self, standardize = False, anchor = None, counts_dir = "./data/symsim2/rand1/GxC.txt", anno_dir = "./data/symsim2/rand1/cell_label1.txt"):
         count = pd.read_csv(counts_dir, header = None, sep = "\t").values.T
         cell_labels = pd.read_csv(anno_dir, sep = "\t")["pop"].values
-        # idx = np.where((cell_labels != "6_5") & (cell_labels != "6_7"))[0]
-        idx = np.where(cell_labels != "6_5")[0]
+        idx = np.where((cell_labels != "6_5") & (cell_labels != "6_7"))[0]
+        # idx = np.where(cell_labels != "6_5")[0]
 
 
         adata = anndata.AnnData(X = count[idx,:])    
@@ -50,8 +50,8 @@ class symsim2_atac(Dataset):
         count = pd.read_csv(counts_dir, header = None, sep = "\t").values.T
         count = np.where(count < 1, 0, 1)
         cell_labels = pd.read_csv(anno_dir, sep = "\t")["pop"].values
-        # idx = np.where((cell_labels != "6_5") & (cell_labels != "6_7"))[0]
-        idx = np.where(cell_labels != "6_5")[0]
+        idx = np.where((cell_labels != "6_5") & (cell_labels != "6_7"))[0]
+        # idx = np.where(cell_labels != "6_5")[0]
 
         self.counts = torch.FloatTensor(count[idx,:])
         self.cell_labels = cell_labels[idx]

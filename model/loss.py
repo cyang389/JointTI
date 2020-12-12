@@ -153,101 +153,7 @@ def kernel(dist, knn = 5, decay = 5):
     return K
 
 
-def traj_loss(recon_x, x, z, diff_sim, Pt = None, lamb_recon = 1, lamb_dist = 1, recon_mode = "original", dist_mode = "inner_product", use_potential = True):
-    """\
-    Description:
-    ------------
-        Loss for latent space learning that preserve the trajectory structure. Include reconstruction(relative) loss and distance preservation loss.
-    
-    Parameters:
-    ------------
-    recon_x:
-        Reconstructed feature matrix, of the size (batch_size, n_features)
-    x:
-        Original input, of the size (batch_size, n_features)
-    z:
-        Learned latent space, of the size (batch_size, 2)
-    diff_sim:
-        Diffusion distance calculated on original dataset, ground truth, of the size (batch_size, batch_size)
-    Pt:
-        Diffusion probability in the original space
-    lamb_recon:
-        Regularization coefficient for reconstruction loss
-    lamb_dis
-        Regularization coefficient for distance preservation loss
-    recon_mode:
-        Reconstruction mode, of two mode, "original" calculuates the original mse loss, "relative" calculates the mse loss of normalized data.  
-    
-    Returns:
-    ------------
-    loss:
-        Total loss
-    loss_recon:
-        Reconstruction loss
-    loss_dist:
-        Distance preservation loss
-    """
-
-    if recon_mode == "original":
-        loss_recon = lamb_recon * F.mse_loss(recon_x, x)
-    elif recon_mode == "relative":
-        mean_recon = torch.mean(recon_x, dim = 0)
-        var_recon = torch.var(recon_x, dim = 0)
-        mean_x = torch.mean(x, dim = 0)
-        var_x = torch.var(x, dim = 0)
-        # relative loss
-        loss_recon = lamb_recon * F.mse_loss(torch.div(torch.add(x, -1.0 * mean_x), (torch.sqrt(var_x + 1e-12)+1e-12)), torch.div(torch.add(x, -1.0 * mean_recon), (torch.sqrt(var_recon + 1e-12)+1e-12)))
-    else:
-        raise ValueError("recon_mode can only be original or relative")
-
-    # cosine similarity loss
-    latent_sim = pairwise_distance(z)
-
-    if dist_mode == "inner_product":
-        # normalize latent similarity matrix
-        latent_sim = latent_sim / torch.norm(latent_sim, p='fro')
-        diff_sim = diff_sim / torch.norm(diff_sim, p = 'fro')
-        # inner product loss, maximize, so add negative before, in addition, make sure those two values are normalized, with norm 1
-        loss_dist = - lamb_dist * torch.sum(diff_sim * latent_sim) 
-
-    elif dist_mode == "mse":
-        # MSE loss
-        # normalize latent similarity matrix
-        latent_sim = latent_sim / torch.norm(latent_sim, p='fro')
-        diff_sim = diff_sim / torch.norm(diff_sim, p = 'fro')
-        loss_dist = lamb_dist * torch.norm(diff_sim - latent_sim, p = 'fro')
-
-    elif dist_mode == "kl":
-        if Pt is None:
-            raise ValueError("`Pt` cannot be `None`")
-        
-        if use_potential:
-            K = latent_sim
-        else:
-            K = kernel(latent_sim)
-        
-        # normalize into transition probability
-        K = K / torch.sum(K, dim = 1)[:,None] + 1e-7
-
-
-        # n_sample by n_dimension, diffusion distribution from original space
-        Pt = Pt / torch.sum(Pt, dim = 1)[:,None] + 1e-7
-
-
-        # average JSD
-        M = 0.5 * (Pt + K)
-        kl = 0.5 * torch.sum(K * torch.log(K / M)) + 0.5 *  torch.sum(Pt * torch.log(Pt / M))
-        assert torch.isnan(kl) == False
-
-        loss_dist = lamb_dist * kl
-    else:
-        raise ValueError("`dist_model` should only be `mse` or `inner_product`")
-
-    loss = loss_recon + loss_dist
-    return loss, loss_recon, loss_dist
-
-'''
-def traj_loss(recon_x, x, z, diff_sim, U_t = None, lamb_recon = 1, lamb_dist = 1, recon_mode = "original", dist_mode = "inner_product"):
+def traj_loss(recon_x, x, z, diff_sim, lamb_recon = 1, lamb_dist = 1, recon_mode = "original", dist_mode = "inner_product"):
     """\
     Description:
     ------------
@@ -308,22 +214,49 @@ def traj_loss(recon_x, x, z, diff_sim, U_t = None, lamb_recon = 1, lamb_dist = 1
         latent_sim = latent_sim / torch.norm(latent_sim, p='fro')
         diff_sim = diff_sim / torch.norm(diff_sim, p = 'fro')
         loss_dist = lamb_dist * torch.norm(diff_sim - latent_sim, p = 'fro')
-    elif dist_mode == "kl":
-        if U_t is None:
-            raise ValueError("`U_t` cannot be `None`")
-        K = kernel(latent_sim)
-        # normalize into transition probability
-        P = K / torch.sum(K, dim = 1)[:,None]
-        # n_sample by n_dimension, diffusion distribution from original space
-        U_t = U_t / torch.sum(U_t, dim = 1)[:,None]
-        # average JSD
-        M = 0.5 * (U_t + P)
-        kl = 0.5 * torch.sum(P * torch.log(P / M)) + 0.5 *  torch.sum(M * torch.log(M / P))
-        loss_dist = lamb_dist * kl
+
     else:
         raise ValueError("`dist_model` should only be `mse` or `inner_product`")
 
     loss = loss_recon + loss_dist
     return loss, loss_recon, loss_dist
-'''
 
+
+def recon_loss(recon_x, x, recon_mode = "original"):
+
+    if recon_mode == "original":
+        loss_recon = F.mse_loss(recon_x, x)
+    elif recon_mode == "relative":
+        mean_recon = torch.mean(recon_x, dim = 0)
+        var_recon = torch.var(recon_x, dim = 0)
+        mean_x = torch.mean(x, dim = 0)
+        var_x = torch.var(x, dim = 0)
+        # relative loss
+        loss_recon = F.mse_loss(torch.div(torch.add(x, -1.0 * mean_x), (torch.sqrt(var_x + 1e-12)+1e-12)), torch.div(torch.add(x, -1.0 * mean_recon), (torch.sqrt(var_recon + 1e-12)+1e-12)))
+    else:
+        raise ValueError("recon_mode can only be original or relative")
+    
+    return loss_recon
+
+def dist_loss(z, diff_sim, dist_mode = "inner_product"):
+    # cosine similarity loss
+    latent_sim = pairwise_distance(z)
+
+    if dist_mode == "inner_product":
+        # normalize latent similarity matrix
+        latent_sim = latent_sim / torch.norm(latent_sim, p='fro')
+        diff_sim = diff_sim / torch.norm(diff_sim, p = 'fro')
+        # inner product loss, maximize, so add negative before, in addition, make sure those two values are normalized, with norm 1
+        loss_dist = - torch.sum(diff_sim * latent_sim) 
+
+    elif dist_mode == "mse":
+        # MSE loss
+        # normalize latent similarity matrix
+        latent_sim = latent_sim / torch.norm(latent_sim, p='fro')
+        diff_sim = diff_sim / torch.norm(diff_sim, p = 'fro')
+        loss_dist = torch.norm(diff_sim - latent_sim, p = 'fro')
+
+    else:
+        raise ValueError("`dist_model` should only be `mse` or `inner_product`")
+
+    return loss_dist

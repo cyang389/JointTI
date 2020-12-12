@@ -97,73 +97,73 @@ def tsne_ATAC(X):
     # return first two dimensions for visualization
     return tsne[:,:2]
 
-
-def pre_train_ae(model, data_loader, diff_sim, optimizer, P = None, n_epochs = 50, lambda_r = 1, dist_mode = "inner_product"):
+def pre_train_ae(encoder, decoder, fusion, data_loader, diff_sim, recon_opt, dist_opt, n_epochs = 50, lambda_r = 1, dist_mode = "inner_product"):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for epoch in range(n_epochs):
         for data in data_loader:
             b_cell_idx = data["index"].to(device)
             b_diff_sim = diff_sim[b_cell_idx,:][:,b_cell_idx]
             b_expr = data["count"].to(device)
-            if dist_mode == "kl":
-                b_P = P[b_cell_idx,:][:,b_cell_idx]
-            else:
-                b_P = None
-            
-            # forward pass through the autoencoder
-            b_expr_r = model(b_expr)
-            b_z = model[:1](b_expr)
-            loss_total, loss_recon, loss_dist = traj_loss(recon_x = b_expr_r, x = b_expr, z = b_z, 
-            diff_sim = b_diff_sim, Pt = b_P, lamb_recon = lambda_r, lamb_dist = 1, recon_mode = "relative", dist_mode = dist_mode)
 
-            # backward pass
-            loss_total.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+            # reconstruction loss
+            b_z1 = encoder(b_expr)
+            b_expr_r = decoder(b_z1)
+            loss_recon = lambda_r * recon_loss(recon_x = b_expr_r, x = b_expr, recon_mode = "relative")
+            loss_recon.backward()
+            recon_opt.step()
+            recon_opt.zero_grad()
+
+            b_z1 = encoder(b_expr)
+            b_z2 = fusion(b_z1)
+            loss_dist = 1 * dist_loss(z = b_z2, diff_sim = b_diff_sim, dist_mode = dist_mode)
+            loss_dist.backward()
+            dist_opt.step()
+            dist_opt.zero_grad()
 
         if epoch % 10 == 0:
-            log = "Total loss: {:.5f}, recon loss: {:.5f}, dist loss: {:.5f}".format(loss_total.item(), loss_recon.item(), loss_dist.item())
+            log = "recon loss: {:.5f}, dist loss: {:.5f}".format(loss_recon.item(), loss_dist.item())
             print("epoch: ", epoch, log)
 
 
-
-def pre_train_disc(model_rna, model_atac, disc, data_loader_rna, data_loader_atac, optimizer_D, n_epochs = 10, use_anchor = False):
+def pre_train_disc(encoder1, encoder2, disc, data_loader1, data_loader2, disc_opt, n_epochs = 10, use_anchor = False):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for epoch in range(n_epochs):
-        for data in zip(data_loader_rna, data_loader_atac):
-            data_rna, data_atac = data
+        for data in zip(data_loader1, data_loader2):
+            data1, data2 = data
 
-            b_expr_rna = data_rna["count"].to(device)
-            b_expr_atac = data_atac["count"].to(device)
-            b_anchor_rna = data_rna["is_anchor"].to(device)
-            b_anchor_atac = data_atac["is_anchor"].to(device)
+            b_data1 = data1["count"].to(device)
+            b_data2 = data2["count"].to(device)
+
             
-            z_rna = model_rna[:1](b_expr_rna)   
-            z_atac = model_atac[:1](b_expr_atac)
+            # before fusion
+            z1 = encoder1(b_data1)   
+            z2 = encoder2(b_data2)
             # Update Discriminator
             
-            n_rna = z_rna.shape[0]
-            n_atac = z_atac.shape[0]
+            n1 = z1.shape[0]
+            n2 = z2.shape[0]
             # note that detach here is necessary, use directly will cause error in encoder update later
-            input_disc = torch.cat((z_rna.detach(), z_atac.detach()), dim = 0)
-            target = torch.cat((torch.full((n_rna, ), 0, dtype = torch.float), torch.full((n_atac, ), 1, dtype = torch.float))).to(device)
+            input_disc = torch.cat((z1.detach(), z2.detach()), dim = 0)
+            target = torch.cat((torch.full((n1, ), 0, dtype = torch.float), torch.full((n2, ), 1, dtype = torch.float))).to(device)
             
             output = disc(input_disc).squeeze()
             D_loss = F.binary_cross_entropy(output, target)
             D_loss.backward()
-            optimizer_D.step()
-            optimizer_D.zero_grad()
+            disc_opt.step()
+            disc_opt.zero_grad()
             
 
             if use_anchor:
-                z_rna = model_rna[:1](b_expr_rna)   
-                z_atac = model_atac[:1](b_expr_atac)
+                b_anchor1 = data1["is_anchor"].to(device)
+                b_anchor2 = data2["is_anchor"].to(device)
+                z1 = encoder1(b_data1)   
+                z2 = encoder2(b_data2)
 
-                z_anchor_rna = z_rna.detach()[b_anchor_rna,:]
-                z_anchor_atac = z_atac.detach()[b_anchor_atac,:]
+                z1_anchor = z1.detach()[b_anchor1,:]
+                z2_anchor = z2.detach()[b_anchor2,:]
 
-                input_disc = torch.cat((z_anchor_rna, z_anchor_atac), dim = 0)
-                target = torch.cat((torch.zeros(z_anchor_rna.shape[0], dtype = torch.float), torch.ones(z_anchor_atac.shape[0], dtype = torch.float)), dim = 0).to(device)
+                input_disc = torch.cat((z1_anchor, z2_anchor), dim = 0)
+                target = torch.cat((torch.zeros(z1_anchor.shape[0], dtype = torch.float), torch.ones(z2_anchor.shape[0], dtype = torch.float)), dim = 0).to(device)
                 output = disc(input_disc).squeeze()
                 D_loss = F.binary_cross_entropy(output, target)
                 
@@ -175,10 +175,9 @@ def pre_train_disc(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
             print("epoch: ", epoch, log)
 
 
-
-def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_atac, diff_sim_rna, 
-                   diff_sim_atac, optimizer_rna, optimizer_atac, optimizer_D, P_rna = None, P_atac = None, n_epochs = 50, 
-                   n_iter = 51, n_iter2 = 1, lamb_r_rna = 1, lamb_r_atac = 1, lamb_disc = 1, dist_mode = "inner_product", use_anchor = False):
+def train_unpaired(encoder1, encoder2, decoder1, decoder2, fusion, disc, data_loader1, data_loader2, diff_sim1, 
+                   diff_sim2, recon_opt1, recon_opt2, dist_opt1, dist_opt2, disc_opt, n_epochs = 50, 
+                   n_iter = 51, n_iter2 = 1, lamb_r1 = 1, lamb_r2 = 1, lamb_disc = 1, dist_mode = "inner_product", use_anchor = False):
     """\
     Description:
     -----------
@@ -230,66 +229,64 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
     Returns:
     -----------
     """
-
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for epoch in range(n_epochs):
-        iteration = zip(data_loader_rna, data_loader_atac)
+        iteration = zip(data_loader1, data_loader2)
         for data in iteration:
             # Update RNA Encoder
-            data_rna, data_atac = data
-            batch_cols_rna = data_rna["index"].to(device)
-            batch_sim_rna = diff_sim_rna[batch_cols_rna,:][:,batch_cols_rna]
-            batch_expr_rna = data_rna["count"].to(device)
-            batch_anchor_rna = data_rna["is_anchor"].to(device)
+            data1, data2 = data
+            b_idx1 = data1["index"].to(device)
+            b_diff_sim1 = diff_sim1[b_idx1,:][:,b_idx1]
+            b_data1 = data1["count"].to(device)
+            
 
-            # batch P
-            if dist_mode == "kl":
-                batch_P_rna = P_rna[batch_cols_rna, :][:, batch_cols_rna]
-            else:
-                batch_P_rna = None
+            # get the latent for discriminator
+            z1_1 = encoder1(b_data1)
+            # note that the input dimension of decoder should be the same as z1_rna 
+            b_r_data1 = decoder1(z1_1)
 
-            batch_expr_r_rna = model_rna(batch_expr_rna)
-            z_rna = model_rna[:1](batch_expr_rna)
-            train_loss_rna, loss_recon_rna, loss_dist_rna = traj_loss(recon_x = batch_expr_r_rna, x = batch_expr_rna, z = z_rna, 
-            diff_sim = batch_sim_rna, Pt = batch_P_rna, lamb_recon = lamb_r_rna, lamb_dist = 1, recon_mode = "relative", dist_mode = dist_mode)
-
-            train_loss_rna.backward()
-            optimizer_rna.step()
-            optimizer_rna.zero_grad()
+            loss_r1 = lamb_r1 * recon_loss(recon_x = b_r_data1, x = b_data1, recon_mode = "relative")
+            loss_r1.backward()
+            recon_opt1.step()
+            recon_opt1.zero_grad()
 
             # Update ATAC Encoder
-            batch_cols_atac = data_atac['index'].to(device)
-            batch_sim_atac = diff_sim_atac[batch_cols_atac,:][:,batch_cols_atac]
-            batch_expr_atac = data_atac['count'].to(device)
-            batch_anchor_atac = data_atac["is_anchor"].to(device)
+            b_idx2 = data2['index'].to(device)
+            b_diff_sim2 = diff_sim2[b_idx2,:][:,b_idx2]
+            b_data2 = data2['count'].to(device)
 
-            # batch U_t
-            if dist_mode == "kl":
-                batch_P_atac = P_atac[batch_cols_atac, :][:, batch_cols_atac]
-            else:
-                batch_P_atac = None
+            # get the latent for discriminator
+            z1_2 = encoder2(b_data2)
+            # note that the input dimension of decoder should be the same as z1_atac
+            b_r_data2 = decoder2(z1_2)
 
-            batch_expr_r_atac = model_atac(batch_expr_atac)
-            z_atac = model_atac[:1](batch_expr_atac)
-            train_loss_atac, loss_recon_atac, loss_dist_atac = traj_loss(recon_x = batch_expr_r_atac, x = batch_expr_atac, z = z_atac, 
-            diff_sim = batch_sim_atac, Pt = batch_P_atac, lamb_recon = lamb_r_atac, lamb_dist = 1, recon_mode = "relative", dist_mode = dist_mode)
+            loss_r2 = lamb_r2 * recon_loss(recon_x = b_r_data2, x = b_data2, recon_mode = "relative")
+            loss_r2.backward()
+            recon_opt2.step()
+            recon_opt2.zero_grad()            
 
-            train_loss_atac.backward()
-            optimizer_atac.step()
-            optimizer_atac.zero_grad()
 
+            # train_loss_atac, loss_recon_atac, loss_dist_atac = traj_loss(recon_x = batch_expr_r_atac, x = batch_expr_atac, z = z2_atac,
+            # diff_sim = batch_sim_atac, lamb_recon = lamb_r_atac, lamb_dist = 1, recon_mode = "relative", dist_mode = dist_mode)
+
+            # train_loss_atac.backward()
+            # optimizer_atac.step()
+            # optimizer_atac.zero_grad()
+
+            # UPDATE discriminator
             # need to go through all the calculation again since the encoder has been updated, ERROR shows up in pytorch 1.5 and above.
             # see: https://github.com/pytorch/pytorch/issues/39141 
-            z_rna = model_rna[:1](batch_expr_rna)
-            z_atac = model_atac[:1](batch_expr_atac)
+            z1_1 = encoder1(b_data1)
+            z1_2 = encoder2(b_data2)
 
             # Update Discriminator
             D_loss_avg = 0
-            n_rna = batch_cols_rna.shape[0]
-            n_atac = batch_cols_atac.shape[0]
+            n1 = b_idx1.shape[0]
+            n2 = b_idx2.shape[0]
             # note that detach here is necessary, use directly will cause error in encoder update later
-            input_disc = torch.cat((z_rna.detach(), z_atac.detach()), dim = 0)
-            target = torch.cat((torch.full((n_rna, ), 0, dtype = torch.float), torch.full((n_atac, ), 1, dtype = torch.float))).to(device)
+            input_disc = torch.cat((z1_1.detach(), z1_2.detach()), dim = 0)
+            target = torch.cat((torch.full((n1, ), 0, dtype = torch.float), torch.full((n2, ), 1, dtype = torch.float))).to(device)
             
 
             for i in range(n_iter):
@@ -297,32 +294,58 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
                 D_loss = lamb_disc * F.binary_cross_entropy(output, target)
                 D_loss_avg += D_loss.item()
                 D_loss.backward()
-                optimizer_D.step()
-                optimizer_D.zero_grad()
+                disc_opt.step()
+                disc_opt.zero_grad()
             D_loss_avg /= n_iter
 
             # Update Encoder
             for i in range(n_iter2):
-                z_rna = model_rna[:1](batch_expr_rna)
-                z_atac = model_atac[:1](batch_expr_atac)
-                E_loss = -lamb_disc * F.binary_cross_entropy(disc(torch.cat((z_rna, z_atac), dim = 0)).squeeze(), target)
+                z1_1 = encoder1(b_data1)
+                z1_2 = encoder2(b_data2)
+                E_loss = -lamb_disc * F.binary_cross_entropy(disc(torch.cat((z1_1, z1_2), dim = 0)).squeeze(), target)
                 E_loss.backward()
-                optimizer_rna.step()
-                optimizer_atac.step()
-                optimizer_rna.zero_grad()
-                optimizer_atac.zero_grad()
+                recon_opt1.step()
+                recon_opt2.step()
+                recon_opt1.zero_grad()
+                recon_opt2.zero_grad()
+            
+
+            # Update distance
+            
+            # get the latent for discriminator
+            z1_1 = encoder1(b_data1)
+            # get the latent for the visualization
+            z2_1 = fusion(z1_1)
+
+            loss_d1 = dist_loss(z = z2_1, diff_sim = b_diff_sim1, dist_mode = dist_mode)
+            loss_d1.backward()
+            dist_opt1.step()
+            dist_opt1.zero_grad()
+
+            # get the latent for discriminator
+            z1_2 = encoder2(b_data2)
+            # get the latent for the visualization
+            z2_2 = fusion(z1_2)
+            
+            loss_d2 = dist_loss(z = z2_2, diff_sim = b_diff_sim2, dist_mode = dist_mode)
+            loss_d2.backward()
+            dist_opt2.step()
+            dist_opt2.zero_grad()
+            
             
             if use_anchor:
                 # update disc for anchor
-                z_rna = model_rna[:1](batch_expr_rna)
-                z_atac = model_atac[:1](batch_expr_atac)
+                b_anchor1 = data1["is_anchor"].to(device)
+                b_anchor2 = data2["is_anchor"].to(device)
+                z1_1 = encoder1(b_data1)
+                z1_2 = encoder2(b_data2)
 
-                z_anchor_rna = z_rna.detach()[batch_anchor_rna,:]
-                z_anchor_atac = z_atac.detach()[batch_anchor_atac,:]
+                z1_anchor = z1_1.detach()[b_anchor1,:]
+                z2_anchor = z1_2.detach()[b_anchor2,:]
 
 
-                input_disc = torch.cat((z_anchor_rna, z_anchor_atac), dim = 0)
-                target = torch.cat((torch.zeros(z_anchor_rna.shape[0], dtype = torch.float), torch.ones(z_anchor_atac.shape[0], dtype = torch.float)), dim = 0).to(device)
+                input_disc = torch.cat((z1_anchor, z2_anchor), dim = 0)
+                target = torch.cat((torch.zeros(z1_anchor.shape[0], dtype = torch.float), torch.ones(z2_anchor.shape[0], dtype = torch.float)), dim = 0).to(device)
                 D_loss_anchor = 0
 
                 for i in range(n_iter):
@@ -330,30 +353,28 @@ def train_unpaired(model_rna, model_atac, disc, data_loader_rna, data_loader_ata
                     D_loss = lamb_disc * F.binary_cross_entropy(output, target)
                     D_loss_anchor += D_loss.item()
                     D_loss.backward()
-                    optimizer_D.step()
-                    optimizer_D.zero_grad()
+                    disc_opt.step()
+                    disc_opt.zero_grad()
                 D_loss_avg = (D_loss_avg + D_loss_anchor/n_iter)/2
                 
                 # update encoder for anchor
                 for i in range(n_iter2):
-                    z_rna = model_rna[:1](batch_expr_rna)
-                    z_atac = model_atac[:1](batch_expr_atac)
+                    z1_1 = encoder1(b_data1)
+                    z1_2 = encoder2(b_data2)
 
-
-                    E_loss = -lamb_disc * F.binary_cross_entropy(disc(torch.cat((z_rna[batch_anchor_rna,:], z_atac[batch_anchor_atac,:]), dim = 0)).squeeze(), target)
+                    E_loss = -lamb_disc * F.binary_cross_entropy(disc(torch.cat((z1_1[b_anchor1,:], z1_2[b_anchor2,:]), dim = 0)).squeeze(), target)
                     E_loss.backward()
-                    optimizer_rna.step()
-                    optimizer_atac.step()
-                    optimizer_rna.zero_grad()
-                    optimizer_atac.zero_grad()
-                
+                    recon_opt1.step()
+                    recon_opt2.step()
+                    recon_opt1.zero_grad()
+                    recon_opt2.zero_grad()
+             
 
         if epoch % 10 == 0:
-            log_rna = "RNA loss: {:.5f}, RNA recon loss: {:.5f}, RNA dist loss: {:.5f}".format(train_loss_rna.item(), loss_recon_rna.item(), loss_dist_rna.item())
-            log_atac = "ATAC loss: {:.5f}, ATAC recon loss: {:.5f}, ATAC dist loss: {:.5f}".format(train_loss_atac.item(), loss_recon_atac.item(), loss_dist_atac.item())
+            log_rna = "RNA recon loss: {:.5f}, RNA dist loss: {:.5f}".format(loss_r1.item(), loss_d1.item())
+            log_atac = "ATAC recon loss: {:.5f}, ATAC dist loss: {:.5f}".format(loss_r2.item(), loss_d2.item())
             log_D = "Discriminator loss: {:.5f}".format(D_loss_avg)
             print("epoch: ", epoch, log_rna, log_atac, log_D)
-
 
 
 
@@ -402,93 +423,3 @@ def plot_latent(z1, z2, anno1 = None, anno2 = None, mode = "joint", save = None,
     if save:
         fig.savefig(save)
 
-"""
-def plot_backbone(model1, model2, loader1, loader2, celltype1, celltype2, device, file_path=None):
-
-    model1.eval()
-    model2.eval()
-    fig = plt.figure(figsize = (20,10))
-    ax = fig.add_subplot()
-    ax.set_title('Backbone')
-
-    for data in loader1:
-        ae_coordinates = model1[:1](data['count'].to(device)).cpu().detach().numpy()
-    cluster_types = np.unique(celltype1)
-    colormap = plt.cm.get_cmap("tab20", cluster_types.shape[0])
-
-    for i, cluster_type in enumerate(cluster_types):
-        index = np.where(celltype1 == cluster_type)[0]
-        ax.scatter(ae_coordinates[index,0], ae_coordinates[index,1], color = colormap(i), alpha = 1)
-
-    for data in loader2:
-        ae_coordinates = model2[:1](data['count'].to(device)).cpu().detach().numpy()
-    cluster_types = np.unique(celltype2)
-    colormap = plt.cm.get_cmap("tab20", cluster_types.shape[0])
-
-    for i, cluster_type in enumerate(cluster_types):
-        index = np.where(celltype2 == cluster_type)[0]
-        ax.scatter(ae_coordinates[index,0], ae_coordinates[index,1], color = colormap(i), alpha = 1)
-
-    ax.legend(cluster_types)
-
-    if file_path:
-        fig.savefig(file_path)
-
-def plot_separate(model1, model2, loader1, loader2, celltype1, celltype2, device, file_path=None):
-
-    model1.eval()
-    model2.eval()
-    fig = plt.figure(figsize = (20,7))
-    axs = fig.subplots(1,2)
-    axs[0].set_title('RNA')
-    axs[1].set_title('ATAC')
-
-    for data in loader1:
-        ae_coordinates = model1[:1](data['count'].to(device)).cpu().detach().numpy()
-    cluster_types = np.unique(celltype1)
-    colormap = plt.cm.get_cmap("tab20", cluster_types.shape[0])
-
-    for i, cluster_type in enumerate(cluster_types):
-        index = np.where(celltype1 == cluster_type)[0]
-        axs[0].scatter(ae_coordinates[index,0], ae_coordinates[index,1], color = colormap(i), alpha = 1)
-    axs[0].legend(cluster_types)
-
-    for data in loader2:
-        ae_coordinates = model2[:1](data['count'].to(device)).cpu().detach().numpy()
-    cluster_types = np.unique(celltype2)
-    colormap = plt.cm.get_cmap("tab20",  cluster_types.shape[0])
-
-    for i, cluster_type in enumerate(cluster_types):
-        index = np.where(celltype2 == cluster_type)[0]
-        axs[1].scatter(ae_coordinates[index,0], ae_coordinates[index,1], color = colormap(i), alpha = 1)
-
-    axs[1].legend(cluster_types)
-    
-    if file_path:
-        fig.savefig(file_path)
-
-
-def plot_merge(model1, model2, loader1, loader2, celltype1, celltype2, device, file_path=None):
-
-    model1.eval()
-    model2.eval()
-    fig = plt.figure(figsize = (20,10))
-    ax = fig.add_subplot()
-    ax.set_title('Merge')
-    colormap = plt.cm.get_cmap("Paired")
-
-    for data in loader1:
-        ae_coordinates = model1[:1](data['count'].to(device)).cpu().detach().numpy()
-
-    ax.scatter(ae_coordinates[:,0], ae_coordinates[:,1], color = colormap(1), label = "batch1", alpha = 1)
-
-    for data in loader2:
-        ae_coordinates = model2[:1](data['count'].to(device)).cpu().detach().numpy()
-    ax.scatter(ae_coordinates[:,0], ae_coordinates[:,1], color = colormap(2), label = "batch2", alpha = 1)
-
-    ax.legend()
-    
-    if file_path:
-        fig.savefig(file_path)
-
-"""

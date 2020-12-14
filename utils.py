@@ -445,14 +445,22 @@ def train_unpaired(encoder1, encoder2, decoder1, decoder2, fusion, disc, data_lo
 
 
 
-def plot_latent(z1, z2, anno1 = None, anno2 = None, mode = "joint", save = None, figsize = (20,10)):
+def plot_latent(z1, z2, anno1 = None, anno2 = None, mode = "joint", save = None, figsize = (20,10), axis_label = "Latent"):
     fig = plt.figure(figsize = figsize)
     if mode == "modality":
         colormap = plt.cm.get_cmap("Paired")
         ax = fig.add_subplot()
         ax.scatter(z1[:,0], z1[:,1], color = colormap(1), label = "RNA", alpha = 1)
         ax.scatter(z2[:,0], z2[:,1], color = colormap(2), label = "ATAC", alpha = 1)
-        ax.legend()
+        ax.legend(loc='upper left', prop={'size': 15}, frameon = False, ncol = 1, bbox_to_anchor=(0.9, 1))
+        
+        ax.tick_params(axis = "both", which = "major", labelsize = 15)
+
+        ax.set_xlabel(axis_label + " 1", fontsize = 19)
+        ax.set_ylabel(axis_label + " 2", fontsize = 19)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)  
+
     elif mode == "joint":
         ax = fig.add_subplot()
         cluster_types = np.unique(anno1)
@@ -467,7 +475,16 @@ def plot_latent(z1, z2, anno1 = None, anno2 = None, mode = "joint", save = None,
         for i, cluster_type in enumerate(cluster_types):
             index = np.where(anno2 == cluster_type)[0]
             ax.scatter(z2[index,0], z2[index,1], color = colormap(i), label = cluster_type, alpha = 1)
-        ax.legend()
+
+        ax.legend(loc='upper left', prop={'size': 15}, frameon = False, ncol = 1, bbox_to_anchor=(0.9, 1))
+        
+        ax.tick_params(axis = "both", which = "major", labelsize = 15)
+
+        ax.set_xlabel(axis_label + " 1", fontsize = 19)
+        ax.set_ylabel(axis_label + " 2", fontsize = 19)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)  
+
 
     elif mode == "separate":
         axs = fig.subplots(1,2)
@@ -477,7 +494,16 @@ def plot_latent(z1, z2, anno1 = None, anno2 = None, mode = "joint", save = None,
         for i, cluster_type in enumerate(cluster_types):
             index = np.where(anno1 == cluster_type)[0]
             axs[0].scatter(z1[index,0], z1[index,1], color = colormap(i), label = cluster_type, alpha = 1)
-        axs[0].legend()
+        # axs[0].legend(fontsize = font_size)
+        axs[0].legend(loc='upper left', prop={'size': 15}, frameon = False, ncol = 1, bbox_to_anchor=(0.9, 1))
+        axs[0].set_title("Dataset 1", fontsize = 25)
+
+        axs[0].tick_params(axis = "both", which = "major", labelsize = 15)
+
+        axs[0].set_xlabel(axis_label + " 1", fontsize = 19)
+        axs[0].set_ylabel(axis_label + " 2", fontsize = 19)
+        axs[0].spines['right'].set_visible(False)
+        axs[0].spines['top'].set_visible(False)  
 
         cluster_types = np.unique(anno2)
         colormap = plt.cm.get_cmap("tab20",  cluster_types.shape[0])
@@ -485,8 +511,17 @@ def plot_latent(z1, z2, anno1 = None, anno2 = None, mode = "joint", save = None,
         for i, cluster_type in enumerate(cluster_types):
             index = np.where(anno2 == cluster_type)[0]
             axs[1].scatter(z2[index,0], z2[index,1], color = colormap(i), label = cluster_type, alpha = 1)
+        # axs[1].axis("off")
+        axs[1].legend(loc='upper left', prop={'size': 15}, frameon = False, ncol = 1, bbox_to_anchor=(0.9, 1))
+        axs[1].set_title("Dataset 2", fontsize = 25)
 
-        axs[1].legend()
+        axs[1].tick_params(axis = "both", which = "major", labelsize = 15)
+
+        axs[1].set_xlabel(axis_label + " 1", fontsize = 19)
+        axs[1].set_ylabel(axis_label + " 2", fontsize = 19)
+        axs[1].spines['right'].set_visible(False)
+        axs[1].spines['top'].set_visible(False)  
+
     if save:
-        fig.savefig(save)
+        fig.savefig(save, bbox_inches = "tight")
 

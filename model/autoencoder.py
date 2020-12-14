@@ -103,33 +103,21 @@ class Decoder(nn.Module):
         return recon
 
 class Fusion(nn.Module):
-    def __init__(self, in_channels, hidden_channels = 8, embed_channels = 2, activation = True, use_hidden = True):
+    def __init__(self, in_channels, hidden_channels = 8, embed_channels = 2, use_hidden = True):
         super(Fusion, self).__init__()
-        self.use_activation = activation
         self.use_hidden = use_hidden
-
-        if activation:
-            self.lrelu_1 = nn.LeakyReLU(negative_slope=0.2)
 
         if use_hidden:
             self.hidden = nn.Linear(in_channels, hidden_channels)
             self.output = nn.Linear(hidden_channels, embed_channels)
         else:
             self.output = nn.Linear(in_channels, embed_channels)
-        self.lrelu_2 = nn.LeakyReLU(negative_slope = 0.2)
+        self.lrelu_1 = nn.LeakyReLU(negative_slope = 0.2)
    
     def forward(self, x):
-        if self.use_activation:
-            if self.use_hidden:
-                x = self.lrelu_2(self.hidden(self.lrelu_1(x)))
-            embed = self.output(x)
-            
-        else:
-            if self.use_hidden:
-                x = self.lrelu_2(self.hidden(x))
-            embed = self.output(x)
-        
-        return embed
+        if self.use_hidden:
+            x = self.lrelu_1(self.hidden(x))
+        return self.output(x)
 
 
 

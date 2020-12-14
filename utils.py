@@ -97,6 +97,73 @@ def tsne_ATAC(X):
     # return first two dimensions for visualization
     return tsne[:,:2]
 
+def pretrain_embedding(encoder1, encoder2, fusion, decoder1, decoder2, diff_sim1, diff_sim2, data_loader1, data_loader2, 
+recon_opt1, recon_opt2, dist_opt1, dist_opt2, n_epochs = 50, lamb_r1 = 1, lamb_r2 = 1, dist_mode = "inner product"):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    for epoch in range(n_epochs):
+        for data in zip(data_loader1, data_loader2):
+            data1, data2 = data
+            b_idx1 = data1["index"].to(device)
+            b_diff_sim1 = diff_sim1[b_idx1,:][:,b_idx1]
+            b_data1 = data1["count"].to(device)
+            
+
+            # get the latent for discriminator
+            z1_1 = encoder1(b_data1)
+            # note that the input dimension of decoder should be the same as z1_rna 
+            b_r_data1 = decoder1(z1_1)
+
+            loss_r1 = lamb_r1 * recon_loss(recon_x = b_r_data1, x = b_data1, recon_mode = "relative")
+            loss_r1.backward()
+            recon_opt1.step()
+            recon_opt1.zero_grad()
+
+            # Update ATAC Encoder
+            b_idx2 = data2['index'].to(device)
+            b_diff_sim2 = diff_sim2[b_idx2,:][:,b_idx2]
+            b_data2 = data2['count'].to(device)
+
+            # get the latent for discriminator
+            z1_2 = encoder2(b_data2)
+            # note that the input dimension of decoder should be the same as z1_atac
+            b_r_data2 = decoder2(z1_2)
+
+            loss_r2 = lamb_r2 * recon_loss(recon_x = b_r_data2, x = b_data2, recon_mode = "relative")
+            loss_r2.backward()
+            recon_opt2.step()
+            recon_opt2.zero_grad()
+
+            # Update distance
+            
+            # get the latent for discriminator
+            z1_1 = encoder1(b_data1)
+            # get the latent for the visualization
+            z2_1 = fusion(z1_1)
+
+            loss_d1 = dist_loss(z = z2_1, diff_sim = b_diff_sim1, dist_mode = dist_mode)
+            loss_d1.backward()
+            dist_opt1.step()
+            dist_opt1.zero_grad()
+
+            # get the latent for discriminator
+            z1_2 = encoder2(b_data2)
+            # get the latent for the visualization
+            z2_2 = fusion(z1_2)
+            
+            loss_d2 = dist_loss(z = z2_2, diff_sim = b_diff_sim2, dist_mode = dist_mode)
+            loss_d2.backward()
+            dist_opt2.step()
+            dist_opt2.zero_grad()
+
+        if epoch % 10 == 0:
+            log_rna = "RNA recon loss: {:.5f}, RNA dist loss: {:.5f}".format(loss_r1.item(), loss_d1.item())
+            log_atac = "ATAC recon loss: {:.5f}, ATAC dist loss: {:.5f}".format(loss_r2.item(), loss_d2.item())
+            print("epoch: ", epoch, log_rna, log_atac)
+
+
+
+
+
 def pre_train_ae(encoder, decoder, fusion, data_loader, diff_sim, recon_opt, dist_opt, n_epochs = 50, lambda_r = 1, dist_mode = "inner_product"):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for epoch in range(n_epochs):

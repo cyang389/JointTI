@@ -13,6 +13,14 @@ import matplotlib.pyplot as plt
 from sklearn import manifold
 from itertools import cycle
 
+def quantile_norm(dist_mtx, reference):
+    # sampling and don't put back
+    reference = np.sort(np.random.choice(reference, dist_mtx.shape[0] * dist_mtx.shape[1], replace = False))
+    dist_temp = dist_mtx.reshape(-1)
+    dist_idx = np.argsort(dist_temp)
+    dist_temp[dist_idx] = reference
+    return dist_temp.reshape(dist_mtx.shape[0], dist_mtx.shape[1])
+
 '''
 def pairwise_distance(x):
     """\
@@ -192,7 +200,7 @@ def pre_train_ae(encoder, decoder, fusion, data_loader, diff_sim, recon_opt, dis
             print("epoch: ", epoch, log)
 
 
-def pre_train_disc(encoder1, encoder2, disc, data_loader1, data_loader2, disc_opt, n_epochs = 10, use_anchor = False):
+def pre_train_disc(encoder1, encoder2, disc, fusion, data_loader1, data_loader2, disc_opt, n_epochs = 10, use_anchor = False):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for epoch in range(n_epochs):
         for data in zip(data_loader1, data_loader2):
@@ -205,6 +213,12 @@ def pre_train_disc(encoder1, encoder2, disc, data_loader1, data_loader2, disc_op
             # before fusion
             z1 = encoder1(b_data1)   
             z2 = encoder2(b_data2)
+
+            z2_1 = fusion(z1)
+            z2_2 = fusion(z2)
+
+            z1 = torch.cat((z1, z2_1), dim = 1)
+            z2 = torch.cat((z2, z2_2), dim = 1)
             # Update Discriminator
             
             n1 = z1.shape[0]
@@ -223,11 +237,14 @@ def pre_train_disc(encoder1, encoder2, disc, data_loader1, data_loader2, disc_op
             if use_anchor:
                 b_anchor1 = data1["is_anchor"].to(device)
                 b_anchor2 = data2["is_anchor"].to(device)
-                z1 = encoder1(b_data1)   
-                z2 = encoder2(b_data2)
+                z1_1 = encoder1(b_data1)   
+                z1_2 = encoder2(b_data2)
 
-                z1_anchor = z1.detach()[b_anchor1,:]
-                z2_anchor = z2.detach()[b_anchor2,:]
+                z2_1 = fusion(z1_1)
+                z2_2 = fusion(z1_2)
+
+                z1_anchor = torch.cat((z1_1.detach()[b_anchor1,:], z2_1.detach()[b_anchor1,:]), dim = 1)
+                z2_anchor = torch.cat((z1_2.detach()[b_anchor2,:], z2_2.detach()[b_anchor2,:]), dim = 1) 
 
                 input_disc = torch.cat((z1_anchor, z2_anchor), dim = 0)
                 target = torch.cat((torch.zeros(z1_anchor.shape[0], dtype = torch.float), torch.ones(z2_anchor.shape[0], dtype = torch.float)), dim = 0).to(device)
@@ -296,6 +313,18 @@ def train_unpaired(encoder1, encoder2, decoder1, decoder2, fusion, disc, data_lo
     Returns:
     -----------
     """
+
+    if encoder1.hidden_layer1.in_features >= 5000:
+        for parameter in encoder1.hidden_layer1.parameters():
+            print("freeze the parameters of the first layers of encoder1")
+            parameter.requires_grad = False
+        
+        
+    
+    if encoder2.hidden_layer1.in_features >= 5000:
+        for parameter in encoder2.hidden_layer1.parameters():
+            print("freeze the parameters of the first layers of encoder2")
+            parameter.requires_grad = False
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for epoch in range(n_epochs):
@@ -331,51 +360,8 @@ def train_unpaired(encoder1, encoder2, decoder1, decoder2, fusion, disc, data_lo
             loss_r2 = lamb_r2 * recon_loss(recon_x = b_r_data2, x = b_data2, recon_mode = "relative")
             loss_r2.backward()
             recon_opt2.step()
-            recon_opt2.zero_grad()            
+            recon_opt2.zero_grad()
 
-
-            # train_loss_atac, loss_recon_atac, loss_dist_atac = traj_loss(recon_x = batch_expr_r_atac, x = batch_expr_atac, z = z2_atac,
-            # diff_sim = batch_sim_atac, lamb_recon = lamb_r_atac, lamb_dist = 1, recon_mode = "relative", dist_mode = dist_mode)
-
-            # train_loss_atac.backward()
-            # optimizer_atac.step()
-            # optimizer_atac.zero_grad()
-
-            # UPDATE discriminator
-            # need to go through all the calculation again since the encoder has been updated, ERROR shows up in pytorch 1.5 and above.
-            # see: https://github.com/pytorch/pytorch/issues/39141 
-            z1_1 = encoder1(b_data1)
-            z1_2 = encoder2(b_data2)
-
-            # Update Discriminator
-            D_loss_avg = 0
-            n1 = b_idx1.shape[0]
-            n2 = b_idx2.shape[0]
-            # note that detach here is necessary, use directly will cause error in encoder update later
-            input_disc = torch.cat((z1_1.detach(), z1_2.detach()), dim = 0)
-            target = torch.cat((torch.full((n1, ), 0, dtype = torch.float), torch.full((n2, ), 1, dtype = torch.float))).to(device)
-            
-
-            for i in range(n_iter):
-                output = disc(input_disc).squeeze()
-                D_loss = lamb_disc * F.binary_cross_entropy(output, target)
-                D_loss_avg += D_loss.item()
-                D_loss.backward()
-                disc_opt.step()
-                disc_opt.zero_grad()
-            D_loss_avg /= n_iter
-
-            # Update Encoder
-            for i in range(n_iter2):
-                z1_1 = encoder1(b_data1)
-                z1_2 = encoder2(b_data2)
-                E_loss = -lamb_disc * F.binary_cross_entropy(disc(torch.cat((z1_1, z1_2), dim = 0)).squeeze(), target)
-                E_loss.backward()
-                recon_opt1.step()
-                recon_opt2.step()
-                recon_opt1.zero_grad()
-                recon_opt2.zero_grad()
-            
 
             # Update distance
             
@@ -397,7 +383,63 @@ def train_unpaired(encoder1, encoder2, decoder1, decoder2, fusion, disc, data_lo
             loss_d2 = dist_loss(z = z2_2, diff_sim = b_diff_sim2, dist_mode = dist_mode)
             loss_d2.backward()
             dist_opt2.step()
-            dist_opt2.zero_grad()
+            dist_opt2.zero_grad()            
+
+
+            # train_loss_atac, loss_recon_atac, loss_dist_atac = traj_loss(recon_x = batch_expr_r_atac, x = batch_expr_atac, z = z2_atac,
+            # diff_sim = batch_sim_atac, lamb_recon = lamb_r_atac, lamb_dist = 1, recon_mode = "relative", dist_mode = dist_mode)
+
+            # train_loss_atac.backward()
+            # optimizer_atac.step()
+            # optimizer_atac.zero_grad()
+
+            # UPDATE discriminator
+            # need to go through all the calculation again since the encoder has been updated, ERROR shows up in pytorch 1.5 and above.
+            # see: https://github.com/pytorch/pytorch/issues/39141 
+            z1_1 = encoder1(b_data1)
+            z1_2 = encoder2(b_data2)
+            z2_1 = fusion(z1_1)
+            z2_2 = fusion(z1_2)
+
+            # Update Discriminator
+            D_loss_avg = 0
+            n1 = b_idx1.shape[0]
+            n2 = b_idx2.shape[0]
+            # note that detach here is necessary, use directly will cause error in encoder update later
+            z1 = torch.cat((z1_1.detach(), z2_1.detach()), dim = 1)
+            z2 = torch.cat((z1_2.detach(), z2_2.detach()), dim = 1)
+            
+
+            input_disc = torch.cat((z1, z2), dim = 0)
+            target = torch.cat((torch.full((n1, ), 0, dtype = torch.float), torch.full((n2, ), 1, dtype = torch.float))).to(device)
+            
+
+            for i in range(n_iter):
+                output = disc(input_disc).squeeze()
+                D_loss = lamb_disc * F.binary_cross_entropy(output, target)
+                D_loss_avg += D_loss.item()
+                D_loss.backward()
+                disc_opt.step()
+                disc_opt.zero_grad()
+            D_loss_avg /= n_iter
+
+            # Update Encoder
+            for i in range(n_iter2):
+                z1_1 = encoder1(b_data1)
+                z1_2 = encoder2(b_data2)
+                z2_1 = fusion(z1_1)
+                z2_2 = fusion(z1_2)
+                z1 = torch.cat((z1_1, z2_1), dim = 1)
+                z2 = torch.cat((z1_2, z2_2), dim = 1)
+                
+                E_loss = -lamb_disc * F.binary_cross_entropy(disc(torch.cat((z1, z2), dim = 0)).squeeze(), target)
+                E_loss.backward()
+                recon_opt1.step()
+                recon_opt2.step()
+                recon_opt1.zero_grad()
+                recon_opt2.zero_grad()
+            
+
             
             
             if use_anchor:
@@ -406,9 +448,11 @@ def train_unpaired(encoder1, encoder2, decoder1, decoder2, fusion, disc, data_lo
                 b_anchor2 = data2["is_anchor"].to(device)
                 z1_1 = encoder1(b_data1)
                 z1_2 = encoder2(b_data2)
+                z2_1 = fusion(z1_1)
+                z2_2 = fusion(z1_2)
 
-                z1_anchor = z1_1.detach()[b_anchor1,:]
-                z2_anchor = z1_2.detach()[b_anchor2,:]
+                z1_anchor = torch.cat((z1_1.detach()[b_anchor1,:], z2_1.detach()[b_anchor1,:]), dim = 1)
+                z2_anchor = torch.cat((z1_2.detach()[b_anchor2,:], z2_2.detach()[b_anchor2,:]), dim = 1) 
 
 
                 input_disc = torch.cat((z1_anchor, z2_anchor), dim = 0)
@@ -428,8 +472,13 @@ def train_unpaired(encoder1, encoder2, decoder1, decoder2, fusion, disc, data_lo
                 for i in range(n_iter2):
                     z1_1 = encoder1(b_data1)
                     z1_2 = encoder2(b_data2)
+                    z2_1 = fusion(z1_1)
+                    z2_2 = fusion(z1_2)
 
-                    E_loss = -lamb_disc * F.binary_cross_entropy(disc(torch.cat((z1_1[b_anchor1,:], z1_2[b_anchor2,:]), dim = 0)).squeeze(), target)
+                    z1_anchor = torch.cat((z1_1[b_anchor1,:], z2_1[b_anchor1,:]), dim = 1)
+                    z2_anchor = torch.cat((z1_2[b_anchor2,:], z2_2[b_anchor2,:]), dim = 1) 
+
+                    E_loss = -lamb_disc * F.binary_cross_entropy(disc(torch.cat((z1_anchor, z2_anchor), dim = 0)).squeeze(), target)
                     E_loss.backward()
                     recon_opt1.step()
                     recon_opt2.step()

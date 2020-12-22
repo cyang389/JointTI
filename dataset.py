@@ -6,6 +6,7 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 
 from sklearn.preprocessing import StandardScaler
+from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.decomposition import PCA
 from sklearn import datasets
 from sklearn.neighbors import kneighbors_graph
@@ -15,15 +16,150 @@ import anndata
 import scanpy as sc
 
 
+class shareseq_rna(Dataset):
+    def __init__(self, standardize = False, rna_seq_file = "./data/SHARE-seq/scRNA.csv", rna_celltype_file = "./data/SHARE-seq/celltypes.txt", anchor = None):
+        """\
+        Symsim dataset
+        Parameters
+        ------------
+        rand_num
+            dataset number, from 1 to 5
+        batch_num
+            batch number, from 1 to 2
+        """
+
+        counts = pd.read_csv(rna_seq_file, index_col=0).values[::3,:]
+        cell_labels = []
+        with open(rna_celltype_file, "r") as fp:
+            for i in fp:
+                cell_labels.append(i.strip("\n"))
+        cell_labels = np.array(cell_labels)[::3]
+        idx = np.where(cell_labels!="TAC-2")[0]
+        counts = counts[idx,:]
+        cell_labels = cell_labels[idx]        
+
+        self.raw = torch.FloatTensor(counts)
+
+       # get processed count matrix 
+        self.counts = torch.FloatTensor(counts)
+        self.cell_labels = cell_labels        
+
+        if standardize:
+            counts = StandardScaler().fit_transform(counts)
+
+        if anchor is not None:
+            self.is_anchor = (self.cell_labels == anchor)
+        else:
+            self.is_anchor = np.zeros(self.cell_labels.shape[0]).astype("bool")
+        
+        
+    def __len__(self):
+        return self.counts.shape[0]
+    
+    def __getitem__(self, idx):
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.counts[idx,:], "index": idx, "is_anchor": self.is_anchor[idx], "raw": self.raw[idx,:]}
+        return sample
+
+
+class shareseq_atac(Dataset):
+    def __init__(self, standardize = False, atac_seq_file = "./data/SHARE-seq/motif_dev_z.csv", atac_celltype_file = "./data/SHARE-seq/celltypes.txt", anchor = None):
+        """\
+        Symsim dataset
+        Parameters
+        ------------
+        rand_num
+            dataset number, from 1 to 5
+        batch_num
+            batch number, from 1 to 2
+        """
+
+        counts = pd.read_csv(atac_seq_file, index_col=0).values[::3,:]
+        cell_labels = []
+        with open(atac_celltype_file, "r") as fp:
+            for i in fp:
+                cell_labels.append(i.strip("\n"))
+        cell_labels = np.array(cell_labels)[::3]
+        idx = np.where(cell_labels!="TAC-2")[0]
+        counts = counts[idx,:]
+        cell_labels = cell_labels[idx]
+
+        self.raw = torch.FloatTensor(counts)
+
+        if standardize:
+            counts = StandardScaler().fit_transform(counts)
+
+        # get processed count matrix 
+        self.counts = torch.FloatTensor(counts)
+        self.cell_labels = cell_labels
+
+        
+        if anchor is not None:
+            self.is_anchor = (self.cell_labels == anchor)
+        else:
+            self.is_anchor = np.zeros(self.cell_labels.shape[0]).astype("bool")
+        
+        
+    def __len__(self):
+        return self.counts.shape[0]
+    
+    def __getitem__(self, idx):
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.counts[idx,:], "index": idx, "is_anchor": self.is_anchor[idx], "raw": self.raw[idx,:]}
+        return sample
+
+
+class cheow_rna(Dataset):
+    def __init__(self, standardize = False, count_dir = "./data/cheow16/Cheow_expression.csv", anno_dir = "./data/cheow16/type1.txt", anchor = None):
+        counts = pd.read_csv(count_dir, header = None).values
+        cell_labels = pd.read_csv(anno_dir, header = None).values.astype(int).squeeze()
+
+        self.counts = torch.FloatTensor(counts)
+        self.cell_labels = cell_labels
+        if anchor is not None:
+            self.is_anchor = (self.cell_labels == anchor)
+        else:
+            self.is_anchor = np.zeros(self.cell_labels.shape[0]).astype("bool")
+        
+        self.is_anchor = torch.tensor(self.is_anchor)
+    
+    def __len__(self):
+        return self.counts.shape[0]
+    
+    def __getitem__(self, idx):
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.counts[idx,:], "index": idx, "is_anchor": self.is_anchor[idx]}
+        return sample
+
+class cheow_meth(Dataset):
+    def __init__(self, standardize = False, count_dir = "./data/cheow16/Cheow_methylation.csv", anno_dir = "./data/cheow16/type1.txt", anchor = None):
+        counts = pd.read_csv(count_dir, header = None).values
+        cell_labels = pd.read_csv(anno_dir, header = None).values.astype(int).squeeze()
+
+        self.counts = torch.FloatTensor(counts)
+        self.cell_labels = cell_labels
+        if anchor is not None:
+            self.is_anchor = (self.cell_labels == anchor)
+        else:
+            self.is_anchor = np.zeros(self.cell_labels.shape[0]).astype("bool")
+        
+        self.is_anchor = torch.tensor(self.is_anchor)
+    
+    def __len__(self):
+        return self.counts.shape[0]
+    
+    def __getitem__(self, idx):
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.counts[idx,:], "index": idx, "is_anchor": self.is_anchor[idx]}
+        return sample
+
 class symsim2_rna(Dataset):
     def __init__(self, standardize = False, anchor = None, counts_dir = "./data/symsim2/rand1/GxC.txt", anno_dir = "./data/symsim2/rand1/cell_label1.txt"):
-        count = pd.read_csv(counts_dir, header = None, sep = "\t").values.T
+        counts = pd.read_csv(counts_dir, sep = "\t", index_col = 0).values.T
         cell_labels = pd.read_csv(anno_dir, sep = "\t")["pop"].values
-        idx = np.where((cell_labels != "5_4") & (cell_labels != "6_7"))[0]
-        # idx = np.where(cell_labels != "6_5")[0]
+        idx = np.where(cell_labels != "0")[0]
 
-
-        adata = anndata.AnnData(X = count[idx,:])    
+        adata = anndata.AnnData(X = counts[idx,:])    
         sc.pp.normalize_per_cell(adata)
         sc.pp.log1p(adata)
 
@@ -47,13 +183,12 @@ class symsim2_rna(Dataset):
 
 class symsim2_atac(Dataset):
     def __init__(self, standardize = False, anchor = None, counts_dir = "./data/symsim2/rand2/RxC.txt", anno_dir = "./data/symsim2/rand2/cell_label2.txt"):
-        count = pd.read_csv(counts_dir, header = None, sep = "\t").values.T
-        count = np.where(count < 1, 0, 1)
+        counts = pd.read_csv(counts_dir, sep = "\t", index_col = 0).values.T
+        counts = np.where(counts < 1, 0, 1)
         cell_labels = pd.read_csv(anno_dir, sep = "\t")["pop"].values
-        idx = np.where((cell_labels != "5_4") & (cell_labels != "6_7"))[0]
-        # idx = np.where(cell_labels != "6_5")[0]
+        idx = np.where(cell_labels != "0")[0]
 
-        self.counts = torch.FloatTensor(count[idx,:])
+        self.counts = torch.FloatTensor(counts[idx,:])
         self.cell_labels = cell_labels[idx]
         if anchor is not None:
             self.is_anchor = (self.cell_labels == anchor)
@@ -117,10 +252,10 @@ class symsim_batches(Dataset):
         sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "is_anchor": self.is_anchor[idx]}
         return sample
 
-class hhRNA(Dataset):
+class hema_rna(Dataset):
     def __init__(self, standardize = False, 
-    rna_seq_file = "./data/human_hematopoiesis/count_rna_1.csv", 
-    rna_celltype_file = "./data/human_hematopoiesis/celltypes_rna_1.txt",
+    rna_seq_file = "./data/hema/counts_rna.csv", 
+    rna_celltype_file = "./data/hema/anno_rna.txt",
     anchor = None):
         """\
         Symsim dataset
@@ -133,38 +268,36 @@ class hhRNA(Dataset):
             batch number, from 1 to 2
         """
 
-        count = pd.read_csv(rna_seq_file, index_col=0).to_numpy()
+        counts = pd.read_csv(rna_seq_file, index_col=0).to_numpy()
         cell_labels = []
         with open(rna_celltype_file, "r") as fp:
             for i in fp:
                 cell_labels.append(i.strip("\n"))
         cell_labels = np.array(cell_labels)
 
-        self.raw = torch.FloatTensor(count)
+        self.raw = torch.FloatTensor(counts)
 
         if standardize:
-            count = StandardScaler().fit_transform(count)
+            counts = StandardScaler().fit_transform(counts)
         
         # get processed count matrix 
-        self.expr = torch.FloatTensor(count)
+        self.counts = torch.FloatTensor(counts)
         self.cell_labels = cell_labels
         if anchor is not None:
             self.is_anchor = torch.tensor(cell_labels == anchor)
-        # get batch number 
-        self.batch_num = 1
         
     def __len__(self):
-        return self.expr.shape[0]
+        return self.counts.shape[0]
     
     def __getitem__(self, idx):
         # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
-        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:], "is_anchor": self.is_anchor[idx]}
+        sample = {"count": self.counts[idx,:], "index": idx, "raw": self.raw[idx,:], "is_anchor": self.is_anchor[idx]}
         return sample
 
-class hhATAC(Dataset):
+class hema_atac(Dataset):
     def __init__(self, standardize = False, 
-    atac_seq_file = "./data/human_hematopoiesis/count_atac_1.csv", 
-    atac_celltype_file = "./data/human_hematopoiesis/celltypes_atac_1.txt",
+    atac_seq_file = "./data/hema/counts_atac.csv", 
+    atac_celltype_file = "./data/hema/anno_atac.txt",
     anchor = None):
         """\
         Symsim dataset
@@ -177,37 +310,39 @@ class hhATAC(Dataset):
             batch number, from 1 to 2
         """
 
-        count = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
+        counts = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
+        # binarize the scATAC-Seq count matrix
+        counts = np.where(counts < 1, 0, 1)
+
         cell_labels = []
         with open(atac_celltype_file, "r") as fp:
             for i in fp:
                 cell_labels.append(i.strip("\n"))
         cell_labels = np.array(cell_labels)
 
-        self.raw = torch.FloatTensor(count)
+        self.raw = torch.FloatTensor(counts)
 
         if standardize:
-            count = StandardScaler().fit_transform(count)
+            tfidf = TfidfTransformer(norm='l2', sublinear_tf=True)
+            counts = tfidf.fit_transform(counts).todense()
+
         
         # get processed count matrix 
-        self.expr = torch.FloatTensor(count)
+        self.counts = torch.FloatTensor(counts)
         self.cell_labels = cell_labels
         if anchor is not None:
             self.is_anchor = torch.tensor(cell_labels == anchor)
-
-        # get batch number 
-        self.batch_num = 2
         
     def __len__(self):
-        return self.expr.shape[0]
+        return self.counts.shape[0]
     
     def __getitem__(self, idx):
         # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
-        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:], "is_anchor": self.is_anchor[idx]}
+        sample = {"count": self.counts[idx,:], "index": idx, "raw": self.raw[idx,:], "is_anchor": self.is_anchor[idx]}
         return sample
 
-class endoRNA(Dataset):
-    def __init__(self, standardize = False, rna_seq_file = "./data/E10.5_CD44+_E+HE+IAC/scRNA.csv", rna_celltype_file = "./data/E10.5_CD44+_E+HE+IAC/rna_celltype.txt"):
+class endo_rna(Dataset):
+    def __init__(self, standardize = False, rna_seq_file = "./data/Endo/counts_rna.csv", rna_celltype_file = "./data/Endo/anno_rna.txt"):
         """\
         endo dataset
 
@@ -219,7 +354,7 @@ class endoRNA(Dataset):
             batch number, from 1 to 2
         """
 
-        count = pd.read_csv(rna_seq_file, index_col=0).to_numpy()
+        counts = pd.read_csv(rna_seq_file, index_col=0).to_numpy()
         cell_labels = []
         with open(rna_celltype_file, "r") as fp:
             for i in fp:
@@ -227,28 +362,26 @@ class endoRNA(Dataset):
 
         cell_labels = np.array(cell_labels)
 
-        self.raw = torch.FloatTensor(count)
+        self.raw = torch.FloatTensor(counts)
 
         if standardize:
-            count = StandardScaler().fit_transform(count)
+            counts = StandardScaler().fit_transform(counts)
         
         # get processed count matrix 
-        self.expr = torch.FloatTensor(count)
+        self.expr = torch.FloatTensor(counts)
         self.cell_labels = cell_labels
 
-        # get batch number 
-        self.batch_num = 1
         
     def __len__(self):
-        return self.expr.shape[0]
+        return self.counts.shape[0]
     
     def __getitem__(self, idx):
         # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
-        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
+        sample = {"count": self.counts[idx,:], "index": idx, "raw": self.raw[idx,:]}
         return sample
 
-class endoATAC(Dataset):
-    def __init__(self, standardize = False, atac_seq_file = "./data/E10.5_CD44+_E+HE+IAC/scATAC.csv", atac_celltype_file = "./data/E10.5_CD44+_E+HE+IAC/atac_celltype.txt"):
+class endo_atac(Dataset):
+    def __init__(self, standardize = False, atac_seq_file = "./data/Endo/counts_atac.csv", atac_celltype_file = "./data/Endo/anno_atac.txt"):
         """\
         Symsim dataset
 
@@ -260,35 +393,33 @@ class endoATAC(Dataset):
             batch number, from 1 to 2
         """
 
-        count = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
+        counts = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
         cell_labels = []
         with open(atac_celltype_file, "r") as fp:
             for i in fp:
                 cell_labels.append(i.strip("\n"))
         cell_labels = np.array(cell_labels)
 
-        self.raw = torch.FloatTensor(count)
+        self.raw = torch.FloatTensor(counts)
 
         if standardize:
-            count = StandardScaler().fit_transform(count)
+            counts = StandardScaler().fit_transform(counts)
         
         # get processed count matrix 
-        self.expr = torch.FloatTensor(count)
+        self.expr = torch.FloatTensor(counts)
         self.cell_labels = cell_labels
 
-        # get batch number 
-        self.batch_num = 2
         
     def __len__(self):
-        return self.expr.shape[0]
+        return self.counts.shape[0]
     
     def __getitem__(self, idx):
         # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
-        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
+        sample = {"count": self.counts[idx,:], "index": idx, "raw": self.raw[idx,:]}
         return sample
 
-class endoRNA_noIAC(Dataset):
-    def __init__(self, standardize = False, rna_seq_file = "./data/E10.5_CD44+_E+HE+IAC/scRNA_noIAC.csv", rna_celltype_file = "./data/E10.5_CD44+_E+HE+IAC/rna_celltype_noIAC.txt"):
+class endo_rna_noIAC(Dataset):
+    def __init__(self, standardize = False, rna_seq_file = "./data/Endo/counts_rna.csv", rna_celltype_file = "./data/Endo/anno_rna.txt"):
         """\
         endo dataset
 
@@ -300,7 +431,7 @@ class endoRNA_noIAC(Dataset):
             batch number, from 1 to 2
         """
 
-        count = pd.read_csv(rna_seq_file, index_col=0).to_numpy()
+        counts = pd.read_csv(rna_seq_file, index_col=0).to_numpy()
         cell_labels = []
         with open(rna_celltype_file, "r") as fp:
             for i in fp:
@@ -308,28 +439,30 @@ class endoRNA_noIAC(Dataset):
 
         cell_labels = np.array(cell_labels)
 
-        self.raw = torch.FloatTensor(count)
+        idx = np.where(cell_labels != "IAC")[0]
+        counts = counts[idx, :]
+        cell_labels = cell_labels[idx]
+
+        self.raw = torch.FloatTensor(counts)
 
         if standardize:
-            count = StandardScaler().fit_transform(count)
+            counts = StandardScaler().fit_transform(counts)
         
         # get processed count matrix 
-        self.expr = torch.FloatTensor(count)
+        self.counts = torch.FloatTensor(counts)
         self.cell_labels = cell_labels
 
-        # get batch number 
-        self.batch_num = 1
         
     def __len__(self):
-        return self.expr.shape[0]
+        return self.counts.shape[0]
     
     def __getitem__(self, idx):
         # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
-        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
+        sample = {"count": self.counts[idx,:], "index": idx, "raw": self.raw[idx,:]}
         return sample
 
-class endoATAC_noIAC(Dataset):
-    def __init__(self, standardize = False, atac_seq_file = "./data/E10.5_CD44+_E+HE+IAC/scATAC_noIAC.csv", atac_celltype_file = "./data/E10.5_CD44+_E+HE+IAC/atac_celltype_noIAC.txt"):
+class endo_atac_noIAC(Dataset):
+    def __init__(self, standardize = False, atac_seq_file = "./data/Endo/counts_atac.csv", atac_celltype_file = "./data/Endo/anno_atac.txt"):
         """\
         Symsim dataset
 
@@ -341,73 +474,33 @@ class endoATAC_noIAC(Dataset):
             batch number, from 1 to 2
         """
 
-        count = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
+        counts = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
         cell_labels = []
         with open(atac_celltype_file, "r") as fp:
             for i in fp:
                 cell_labels.append(i.strip("\n"))
         cell_labels = np.array(cell_labels)
 
-        self.raw = torch.FloatTensor(count)
+        idx = np.where(cell_labels != "IAC")[0]
+        counts = counts[idx, :]
+        cell_labels = cell_labels[idx]
+
+        self.raw = torch.FloatTensor(counts)
 
         if standardize:
-            count = StandardScaler().fit_transform(count)
+            counts = StandardScaler().fit_transform(counts)
         
         # get processed count matrix 
-        self.expr = torch.FloatTensor(count)
+        self.counts = torch.FloatTensor(counts)
         self.cell_labels = cell_labels
-
-        # get batch number 
-        self.batch_num = 2
         
     def __len__(self):
-        return self.expr.shape[0]
+        return self.counts.shape[0]
     
     def __getitem__(self, idx):
         # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
-        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
+        sample = {"count": self.counts[idx,:], "index": idx, "raw": self.raw[idx,:]}
         return sample
-
-class lsiATAC(Dataset):
-    def __init__(self, standardize = False, atac_seq_file = "./data/E10.5_CD44+_E+HE+IAC/atac_lsi.csv", atac_celltype_file = "./data/E10.5_CD44+_E+HE+IAC/atac_celltype.txt"):
-        """\
-        Symsim dataset
-
-        Parameters
-        ------------
-        rand_num
-            dataset number, from 1 to 5
-        batch_num
-            batch number, from 1 to 2
-        """
-
-        count = pd.read_csv(atac_seq_file, index_col=0).to_numpy()
-        cell_labels = []
-        with open(atac_celltype_file, "r") as fp:
-            for i in fp:
-                cell_labels.append(i.strip("\n"))
-        cell_labels = np.array(cell_labels)
-
-        self.raw = torch.FloatTensor(count)
-
-        if standardize:
-            count = StandardScaler().fit_transform(count)
-        
-        # get processed count matrix 
-        self.expr = torch.FloatTensor(count)
-        self.cell_labels = cell_labels
-
-        # get batch number 
-        self.batch_num = 2
-        
-    def __len__(self):
-        return self.expr.shape[0]
-    
-    def __getitem__(self, idx):
-        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
-        sample = {"count": self.expr[idx,:], "index": idx, "batch": self.batch_num, "raw": self.raw[idx,:]}
-        return sample
-
 
 
 

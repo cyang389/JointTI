@@ -8,7 +8,6 @@ CONFIG = {
     'layers': [512, 256, 128, 2], # number of nodes in each layer of encoder and decoder.
     'minibatch_size': 256,
     'use_batchnorm': True, # use batch normalization layer.
-    'use_tanh': False,
 #     'max_iterations': 1000, # max iteration steps
 #     'log_interval': 100, # interval of steps to display loss information.
 #     'use_gpu': False, 
@@ -56,8 +55,6 @@ class Encoder(nn.Module):
             embed = self.hidden_layer4(x)
             # embed = self.hidden_layer3(x)
         
-        if self.cfg['use_tanh']:
-            embed = F.tanh(embed)
             
         return embed
 
@@ -110,9 +107,10 @@ class Fusion(nn.Module):
         if use_hidden:
             self.hidden = nn.Linear(in_channels, hidden_channels)
             self.output = nn.Linear(hidden_channels, embed_channels)
+            self.lrelu_1 = nn.LeakyReLU(negative_slope = 0.2)
+
         else:
             self.output = nn.Linear(in_channels, embed_channels)
-        self.lrelu_1 = nn.LeakyReLU(negative_slope = 0.2)
    
     def forward(self, x):
         if self.use_hidden:
@@ -141,73 +139,3 @@ class discriminator(nn.Module):
         x = F.sigmoid(self.lin3(x))
         return x
         
-
-# autoencoder for unpaired dataset
-class AE_unpaired(nn.Module):
-    def __init__(self, cfg_rna, cfg_atac):
-        super(AE_unpaired, self).__init__()
-        self.atac_encoder = Encoder(cfg_atac)
-        self.rna_encoder = Encoder(cfg_rna)
-        
-        self.atac_decoder = Decoder(cfg_atac)
-        self.rna_decoder = Decoder(cfg_rna)
-
-    def forward(self, atac, rna):
-        # encode
-        latent_atac = self.atac_encoder(atac)
-        latent_rna = self.rna_encoder(rna)
-
-        # decode
-        return self.rna_decoder(latent_rna), self.atac_decoder(latent_atac), latent_rna, latent_atac
-
-
-
-
-#################################################################################
-
-#                             Paired, using Fusion network                      #
-
-#################################################################################
-
-
-class oldAutoEncoder(nn.Module):
-    def __init__(self, cfg_rna, cfg_atac):
-        super(oldAutoEncoder, self).__init__()
-        
-        self.atac_encoder = Encoder(cfg_atac)
-        self.rna_encoder = Encoder(cfg_atac)
-        
-        self.fusion = Fusion(in_channels = cfg_rna['layers'][-1] + cfg_atac['layers'][-1], embed_channels = 2)
-
-        self.atac_decoder = Decoder(cfg_atac)
-        self.rna_decoder = Decoder(cfg_rna)
-
-    def forward(self, atac, rna):
-        # encode
-        latent_atac = self.atac_encoder(atac)
-        latent_rna = self.rna_encoder(rna)
-        z = self.fusion(torch.cat((latent_atac, latent_rna), dim=1))
-
-        # decode
-        return self.atac_decoder(z), self.rna_decoder(z), z
-
-    
-class AutoEncoder(nn.Module):
-    def __init__(self, cfg_rna, cfg_atac):
-        super(AutoEncoder, self).__init__()
-        self.atac_encoder = Encoder(cfg_atac)
-        self.rna_encoder = Encoder(cfg_rna)
-        
-        self.fusion = Fusion(in_channels = cfg_rna['layers'][-1] + cfg_atac['layers'][-1], embed_channels = 2)
-
-        self.atac_decoder = Decoder(cfg_atac)
-        self.rna_decoder = Decoder(cfg_rna)
-
-    def forward(self, atac, rna):
-        # encode
-        latent_atac = self.atac_encoder(atac)
-        latent_rna = self.rna_encoder(rna)
-        z = self.fusion(torch.cat((latent_atac, latent_rna), dim=1))
-
-        # decode
-        return self.atac_decoder(latent_atac), self.rna_decoder(latent_rna), z, latent_atac, latent_rna

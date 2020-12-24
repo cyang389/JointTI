@@ -139,6 +139,20 @@ class discriminator(nn.Module):
         x = F.relu(self.lin2(x))
         x = F.sigmoid(self.lin3(x))
         return x
+
+
+class w_discriminator(nn.Module):
+    def __init__(self, infeatures = 2, hidden1 = 32, hidden2 = 16, hidden3 = 1):
+        super(w_discriminator, self).__init__()
+        self.lin1 = nn.Linear(infeatures, hidden1)
+        self.lin2 = nn.Linear(hidden1, hidden2)
+        self.lin3 = nn.Linear(hidden2, hidden3)
+    
+    def forward(self, latent_rep):
+        x = F.relu(self.lin1(latent_rep))
+        x = F.relu(self.lin2(x))
+        x = self.lin3(x)
+        return x
         
 
 # autoencoder for unpaired dataset
